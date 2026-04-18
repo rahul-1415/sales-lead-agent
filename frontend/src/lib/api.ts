@@ -59,6 +59,16 @@ export function getDownloadUrl(jobId: string): Promise<{ download_url: string }>
   return request(`/jobs/${jobId}/download`);
 }
 
+export function exportLeads(scoreMin = 0): string {
+  return `${BASE_URL}/leads/export?score_min=${scoreMin}`;
+}
+
+export async function clearLeads(): Promise<{ cleared: number }> {
+  const res = await fetch(`${BASE_URL}/leads`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Clear failed: ${res.statusText}`);
+  return res.json();
+}
+
 // ---------------------------------------------------------------------------
 // Queue
 // ---------------------------------------------------------------------------

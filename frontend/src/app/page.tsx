@@ -9,17 +9,30 @@ import { Analytics } from "@/components/Analytics";
 import { useLeads } from "@/hooks/useLeads";
 import { usePersistedJobs } from "@/hooks/usePersistedJobs";
 import type { UploadResponse } from "@/lib/types";
-import { RefreshCw, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Archive, RefreshCw, SlidersHorizontal, Trash2 } from "lucide-react";
+import { clearLeads, exportLeads } from "@/lib/api";
 
 export default function DashboardPage() {
   const [processingIds, setProcessingIds] = useState<string[]>([]);
   const [scoreMin, setScoreMin] = useState(0);
   const { leads, total, loading, error, refresh } = useLeads(scoreMin);
   const { completedIds, addCompletedJob, clearCompletedJobs } = usePersistedJobs();
+  const [clearing, setClearing] = useState(false);
 
   function onUploaded(res: UploadResponse) {
     setProcessingIds((prev) => [res.job_id, ...prev]);
     setTimeout(() => refresh(), 4000);
+  }
+
+  async function handleClear() {
+    if (!confirm(`Delete all ${total} leads? This cannot be undone.`)) return;
+    setClearing(true);
+    try {
+      await clearLeads();
+      refresh();
+    } finally {
+      setClearing(false);
+    }
   }
 
   const onJobComplete = useCallback((jobId: string) => {
@@ -115,6 +128,24 @@ export default function DashboardPage() {
                 ))}
               </select>
             </div>
+            <a
+              href={exportLeads(scoreMin)}
+              download="leads_export.ndjson"
+              className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+            >
+              <Archive className="h-3.5 w-3.5" />
+              Export
+            </a>
+            {total > 0 && (
+              <button
+                onClick={handleClear}
+                disabled={clearing}
+                className="flex items-center gap-1.5 rounded-md border border-red-200 bg-white px-3 py-1.5 text-sm text-red-500 hover:bg-red-50 disabled:opacity-50"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {clearing ? "Clearing…" : "Clear"}
+              </button>
+            )}
             <button
               onClick={refresh}
               className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
