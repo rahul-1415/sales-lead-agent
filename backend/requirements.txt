@@ -1,0 +1,8 @@
+anthropic
+fastapi
+mangum
+boto3
+pydantic
+pydantic-settings
+python-multipart
+uvicorn
