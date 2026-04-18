@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { UploadForm } from "@/components/UploadForm";
 import { JobStatusCard } from "@/components/JobStatusCard";
+import { ProcessedJobCard } from "@/components/ProcessedJobCard";
 import { LeadTable } from "@/components/LeadTable";
 import { Analytics } from "@/components/Analytics";
 import { useLeads } from "@/hooks/useLeads";
@@ -10,15 +11,21 @@ import type { UploadResponse } from "@/lib/types";
 import { RefreshCw, SlidersHorizontal } from "lucide-react";
 
 export default function DashboardPage() {
-  const [activeJobIds, setActiveJobIds] = useState<string[]>([]);
+  const [processingIds, setProcessingIds] = useState<string[]>([]);
+  const [completedIds, setCompletedIds]   = useState<string[]>([]);
   const [scoreMin, setScoreMin] = useState(0);
   const { leads, total, loading, error, refresh } = useLeads(scoreMin);
 
   function onUploaded(res: UploadResponse) {
-    setActiveJobIds((prev) => [res.job_id, ...prev]);
-    // Refresh the lead table after a short delay to pick up new results
+    setProcessingIds((prev) => [res.job_id, ...prev]);
     setTimeout(() => refresh(), 4000);
   }
+
+  const onJobComplete = useCallback((jobId: string) => {
+    setProcessingIds((prev) => prev.filter((id) => id !== jobId));
+    setCompletedIds((prev) => (prev.includes(jobId) ? prev : [jobId, ...prev]));
+    refresh();
+  }, [refresh]);
 
   return (
     <div className="space-y-8">
@@ -38,15 +45,29 @@ export default function DashboardPage() {
         <UploadForm onUploaded={onUploaded} />
       </section>
 
-      {/* Active jobs */}
-      {activeJobIds.length > 0 && (
+      {/* Processing jobs */}
+      {processingIds.length > 0 && (
         <section>
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
             Processing Jobs
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">
-            {activeJobIds.slice(0, 4).map((id) => (
-              <JobStatusCard key={id} jobId={id} />
+            {processingIds.map((id) => (
+              <JobStatusCard key={id} jobId={id} onComplete={onJobComplete} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Completed jobs */}
+      {completedIds.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+            Processed Jobs
+          </h2>
+          <div className="space-y-2">
+            {completedIds.map((id) => (
+              <ProcessedJobCard key={id} jobId={id} />
             ))}
           </div>
         </section>
@@ -69,7 +90,6 @@ export default function DashboardPage() {
             Leads {total > 0 && <span className="normal-case font-normal text-gray-400">({total})</span>}
           </h2>
           <div className="flex items-center gap-3">
-            {/* Score filter */}
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <SlidersHorizontal className="h-4 w-4" />
               <label htmlFor="score-filter">Min score</label>
