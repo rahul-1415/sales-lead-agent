@@ -76,7 +76,7 @@ export default function DashboardPage() {
               Clear history
             </button>
           </div>
-          <div className="space-y-2">
+          <div className="grid gap-4 sm:grid-cols-2">
             {completedIds.map((id) => (
               <ProcessedJobCard key={id} jobId={id} />
             ))}
