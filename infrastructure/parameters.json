@@ -1,6 +1,6 @@
 [
   { "ParameterKey": "Environment",                  "ParameterValue": "staging" },
-  { "ParameterKey": "AnthropicApiKey",              "ParameterValue": "REPLACE_ME" },
+  { "ParameterKey": "GroqApiKey",              "ParameterValue": "REPLACE_ME" },
   { "ParameterKey": "LambdaZipBucket",              "ParameterValue": "your-lambda-artifacts-bucket" },
   { "ParameterKey": "LambdaZipKey",                 "ParameterValue": "lambda/sales-lead-agent.zip" },
   { "ParameterKey": "LeadScorePriorityThreshold",   "ParameterValue": "0.75" },

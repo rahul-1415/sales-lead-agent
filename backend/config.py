@@ -6,8 +6,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # Anthropic
-    anthropic_api_key: str = ""
+    # Groq
+    groq_api_key: str = ""
 
     # AWS
     aws_region: str = "us-east-1"
