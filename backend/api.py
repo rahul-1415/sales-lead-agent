@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 import db
-import queue as sqs
+import sqs
 import storage
 from agent.models import (
     BatchJob,

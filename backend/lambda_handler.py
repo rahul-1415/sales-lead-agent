@@ -161,7 +161,7 @@ def batch_orchestrator(event: dict[str, Any], context: Any) -> dict[str, Any]:
     writes one S3 object and one DynamoDB record, then this function does
     the fan-out asynchronously.
     """
-    import queue as sqs_module
+    import sqs as sqs_module
 
     for s3_record in event.get("Records", []):
         bucket = s3_record["s3"]["bucket"]["name"]
