@@ -21,7 +21,7 @@ export function ProcessedJobCard({ jobId }: { jobId: string }) {
       "flex items-center justify-between rounded-xl border px-5 py-4",
       isOk ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"
     )}>
-      {/* Left — status + id + time */}
+      {/* Left — icon + job id + time */}
       <div className="flex items-center gap-3">
         {isOk
           ? <CheckCircle className="h-5 w-5 text-green-500 shrink-0" />
@@ -31,13 +31,14 @@ export function ProcessedJobCard({ jobId }: { jobId: string }) {
           <p className={clsx("text-sm font-semibold", isOk ? "text-green-800" : "text-red-800")}>
             {isOk ? "Completed" : "Failed"}
           </p>
-          <p className="text-xs text-gray-400 font-mono">{jobId.slice(0, 8)}…
+          <p className="text-xs text-gray-400 font-mono">
+            {jobId.slice(0, 8)}…
             {completedTime && <span className="ml-2 not-italic">{completedTime}</span>}
           </p>
         </div>
       </div>
 
-      {/* Right — lead counts */}
+      {/* Right — per-action counts */}
       {isOk && (
         <div className="flex items-center gap-4 text-xs">
           <Stat label="Priority" value={stats.priority} color="text-green-700" />

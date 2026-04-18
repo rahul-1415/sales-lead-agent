@@ -43,7 +43,9 @@ export function JobStatusCard({ jobId, onComplete }: Props) {
   }
 
   if (!job) {
-    return <div className="rounded-xl border border-gray-200 bg-white p-4 animate-pulse h-28" />;
+    return (
+      <div className="rounded-xl border border-gray-200 bg-white p-4 animate-pulse h-28" />
+    );
   }
 
   const { stats, status } = job;
@@ -61,6 +63,7 @@ export function JobStatusCard({ jobId, onComplete }: Props) {
         <span className="text-xs text-gray-400 font-mono">{jobId.slice(0, 8)}…</span>
       </div>
 
+      {/* Progress bar */}
       <div>
         <div className="flex justify-between text-xs text-gray-500 mb-1">
           <span>{stats.processed} / {stats.total} leads</span>
@@ -74,12 +77,13 @@ export function JobStatusCard({ jobId, onComplete }: Props) {
         </div>
       </div>
 
+      {/* Action breakdown */}
       <div className="grid grid-cols-4 gap-2 text-center">
         {[
-          { label: "Priority", value: stats.priority, color: "text-green-600" },
-          { label: "Standard", value: stats.standard, color: "text-blue-600" },
-          { label: "Research", value: stats.research, color: "text-yellow-600" },
-          { label: "Rejected", value: stats.rejected, color: "text-red-500" },
+          { label: "Priority", value: stats.priority,  color: "text-green-600" },
+          { label: "Standard", value: stats.standard,  color: "text-blue-600" },
+          { label: "Research", value: stats.research,  color: "text-yellow-600" },
+          { label: "Rejected", value: stats.rejected,  color: "text-red-500" },
         ].map(({ label, value, color }) => (
           <div key={label} className="rounded-lg bg-gray-50 py-2">
             <div className={clsx("text-lg font-bold", color)}>{value}</div>
