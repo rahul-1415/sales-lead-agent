@@ -11,6 +11,7 @@ import { usePersistedJobs } from "@/hooks/usePersistedJobs";
 import type { UploadResponse } from "@/lib/types";
 import { Archive, RefreshCw, SlidersHorizontal, Trash2 } from "lucide-react";
 import { clearLeads, exportLeads } from "@/lib/api";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 export default function DashboardPage() {
   const [processingIds, setProcessingIds] = useState<string[]>([]);
@@ -18,18 +19,19 @@ export default function DashboardPage() {
   const { leads, total, loading, error, refresh } = useLeads(scoreMin);
   const { completedIds, addCompletedJob, clearCompletedJobs } = usePersistedJobs();
   const [clearing, setClearing] = useState(false);
+  const [showClearDialog, setShowClearDialog] = useState(false);
 
   function onUploaded(res: UploadResponse) {
     setProcessingIds((prev) => [res.job_id, ...prev]);
     setTimeout(() => refresh(), 4000);
   }
 
-  async function handleClear() {
-    if (!confirm(`Delete all ${total} leads? This cannot be undone.`)) return;
+  async function handleClearConfirmed() {
     setClearing(true);
     try {
       await clearLeads();
       refresh();
+      setShowClearDialog(false);
     } finally {
       setClearing(false);
     }
@@ -138,12 +140,11 @@ export default function DashboardPage() {
             </a>
             {total > 0 && (
               <button
-                onClick={handleClear}
-                disabled={clearing}
-                className="flex items-center gap-1.5 rounded-md border border-red-200 bg-white px-3 py-1.5 text-sm text-red-500 hover:bg-red-50 disabled:opacity-50"
+                onClick={() => setShowClearDialog(true)}
+                className="flex items-center gap-1.5 rounded-md border border-red-200 bg-white px-3 py-1.5 text-sm text-red-500 hover:bg-red-50"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                {clearing ? "Clearing…" : "Clear"}
+                Clear
               </button>
             )}
             <button
@@ -164,6 +165,17 @@ export default function DashboardPage() {
 
         <LeadTable leads={leads} loading={loading} />
       </section>
+
+      <ConfirmDialog
+        open={showClearDialog}
+        title="Delete all leads?"
+        description={`This will permanently delete all ${total} lead${total !== 1 ? "s" : ""} from the system.`}
+        warning="This action cannot be undone. All enrichment data, scores, and AI reasoning will be lost."
+        confirmLabel="Delete all leads"
+        loading={clearing}
+        onConfirm={handleClearConfirmed}
+        onCancel={() => setShowClearDialog(false)}
+      />
     </div>
   );
 }
