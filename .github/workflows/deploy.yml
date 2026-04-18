@@ -1,0 +1,256 @@
+name: CI / CD
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main]
+
+# Cancel in-flight runs for the same branch so a fast follow-up push
+# doesn't queue behind a superseded deploy.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  AWS_REGION: us-east-1
+  LAMBDA_ZIP: sales-lead-agent.zip
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1 — lint + test
+  # Runs on every push and every PR. No AWS credentials needed.
+  # ---------------------------------------------------------------------------
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Lint — black (format check)
+        working-directory: backend
+        run: black --check .
+
+      - name: Lint — flake8
+        working-directory: backend
+        run: flake8 . --max-line-length=100 --exclude=.venv
+
+      - name: Test — pytest
+        working-directory: backend
+        env:
+          ENVIRONMENT: local
+          ANTHROPIC_API_KEY: ""       # tests use mocks, no real key needed
+          AWS_DEFAULT_REGION: us-east-1
+          DYNAMODB_LEADS_TABLE: leads-test
+          DYNAMODB_JOBS_TABLE: batch-jobs-test
+          S3_INPUT_BUCKET: test-input
+          S3_OUTPUT_BUCKET: test-output
+          SQS_QUEUE_URL: https://sqs.us-east-1.amazonaws.com/000000000000/test-queue
+        run: pytest tests/ -v --tb=short
+
+  # ---------------------------------------------------------------------------
+  # Job 2 — build Lambda ZIP
+  # Packages backend/ + all pip dependencies into a single ZIP for Lambda.
+  # Runs after tests pass, only on pushes (not PRs).
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build Lambda Package
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install production dependencies into package dir
+        working-directory: backend
+        run: |
+          pip install -r requirements.txt --target ./package --upgrade
+
+      - name: Copy application code into package dir
+        working-directory: backend
+        run: |
+          cp -r agent tools api.py lambda_handler.py config.py db.py storage.py queue.py ./package/
+
+      - name: Create ZIP
+        working-directory: backend/package
+        run: zip -r ../../${{ env.LAMBDA_ZIP }} . -x "*.pyc" -x "*/__pycache__/*"
+
+      - name: Upload ZIP as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-zip
+          path: ${{ env.LAMBDA_ZIP }}
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Job 3 — deploy to staging (branch: staging)
+  # ---------------------------------------------------------------------------
+  deploy-staging:
+    name: Deploy → Staging
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/staging'
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Lambda ZIP
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-zip
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload ZIP to S3
+        run: |
+          aws s3 cp ${{ env.LAMBDA_ZIP }} \
+            s3://${{ secrets.LAMBDA_ZIP_BUCKET }}/lambda/${{ env.LAMBDA_ZIP }}
+
+      - name: Deploy CloudFormation stack
+        run: |
+          aws cloudformation deploy \
+            --template-file infrastructure/cloudformation.yaml \
+            --stack-name sales-lead-agent-staging \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              Environment=staging \
+              AnthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }} \
+              LambdaZipBucket=${{ secrets.LAMBDA_ZIP_BUCKET }} \
+              LambdaZipKey=lambda/${{ env.LAMBDA_ZIP }} \
+            --no-fail-on-empty-changeset
+
+      - name: Update Lambda function code
+        # CloudFormation deploy only updates the stack config.
+        # This forces Lambda to pull the new ZIP from S3 immediately.
+        run: |
+          for fn in api processor orchestrator; do
+            aws lambda update-function-code \
+              --function-name sales-lead-agent-${fn}-staging \
+              --s3-bucket ${{ secrets.LAMBDA_ZIP_BUCKET }} \
+              --s3-key lambda/${{ env.LAMBDA_ZIP }} \
+              --publish
+          done
+
+      - name: Wait for Lambda updates to complete
+        run: |
+          for fn in api processor orchestrator; do
+            aws lambda wait function-updated \
+              --function-name sales-lead-agent-${fn}-staging
+          done
+
+      - name: Smoke test — health endpoint
+        run: |
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name sales-lead-agent-staging \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" \
+            --output text)
+          echo "API endpoint: $API_URL"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/health")
+          echo "Health check status: $STATUS"
+          [ "$STATUS" = "200" ] || (echo "Health check failed" && exit 1)
+
+  # ---------------------------------------------------------------------------
+  # Job 4 — deploy to production (branch: main)
+  # Requires a manual approval gate via GitHub Environments.
+  # ---------------------------------------------------------------------------
+  deploy-production:
+    name: Deploy → Production
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    environment: production   # GitHub environment with required reviewers configured
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Lambda ZIP
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-zip
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload ZIP to S3
+        run: |
+          aws s3 cp ${{ env.LAMBDA_ZIP }} \
+            s3://${{ secrets.LAMBDA_ZIP_BUCKET }}/lambda/${{ env.LAMBDA_ZIP }}
+
+      - name: Deploy CloudFormation stack
+        run: |
+          aws cloudformation deploy \
+            --template-file infrastructure/cloudformation.yaml \
+            --stack-name sales-lead-agent-production \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              Environment=production \
+              AnthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }} \
+              LambdaZipBucket=${{ secrets.LAMBDA_ZIP_BUCKET }} \
+              LambdaZipKey=lambda/${{ env.LAMBDA_ZIP }} \
+            --no-fail-on-empty-changeset
+
+      - name: Update Lambda function code
+        run: |
+          for fn in api processor orchestrator; do
+            aws lambda update-function-code \
+              --function-name sales-lead-agent-${fn}-production \
+              --s3-bucket ${{ secrets.LAMBDA_ZIP_BUCKET }} \
+              --s3-key lambda/${{ env.LAMBDA_ZIP }} \
+              --publish
+          done
+
+      - name: Wait for Lambda updates to complete
+        run: |
+          for fn in api processor orchestrator; do
+            aws lambda wait function-updated \
+              --function-name sales-lead-agent-${fn}-production
+          done
+
+      - name: Smoke test — health endpoint
+        run: |
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name sales-lead-agent-production \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" \
+            --output text)
+          echo "API endpoint: $API_URL"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/health")
+          echo "Health check status: $STATUS"
+          [ "$STATUS" = "200" ] || (echo "Health check failed" && exit 1)
+
+      - name: Tag release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "release-$(date +%Y%m%d-%H%M%S)" -m "Production deploy ${{ github.sha }}"
+          git push origin --tags
