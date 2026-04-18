@@ -7,14 +7,15 @@ import { ProcessedJobCard } from "@/components/ProcessedJobCard";
 import { LeadTable } from "@/components/LeadTable";
 import { Analytics } from "@/components/Analytics";
 import { useLeads } from "@/hooks/useLeads";
+import { usePersistedJobs } from "@/hooks/usePersistedJobs";
 import type { UploadResponse } from "@/lib/types";
-import { RefreshCw, SlidersHorizontal } from "lucide-react";
+import { RefreshCw, SlidersHorizontal, Trash2 } from "lucide-react";
 
 export default function DashboardPage() {
   const [processingIds, setProcessingIds] = useState<string[]>([]);
-  const [completedIds, setCompletedIds]   = useState<string[]>([]);
   const [scoreMin, setScoreMin] = useState(0);
   const { leads, total, loading, error, refresh } = useLeads(scoreMin);
+  const { completedIds, addCompletedJob, clearCompletedJobs } = usePersistedJobs();
 
   function onUploaded(res: UploadResponse) {
     setProcessingIds((prev) => [res.job_id, ...prev]);
@@ -23,9 +24,9 @@ export default function DashboardPage() {
 
   const onJobComplete = useCallback((jobId: string) => {
     setProcessingIds((prev) => prev.filter((id) => id !== jobId));
-    setCompletedIds((prev) => (prev.includes(jobId) ? prev : [jobId, ...prev]));
+    addCompletedJob(jobId);
     refresh();
-  }, [refresh]);
+  }, [addCompletedJob, refresh]);
 
   return (
     <div className="space-y-8">
@@ -59,12 +60,22 @@ export default function DashboardPage() {
         </section>
       )}
 
-      {/* Completed jobs */}
+      {/* Processed jobs — persisted in localStorage */}
       {completedIds.length > 0 && (
         <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-            Processed Jobs
-          </h2>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+              Processed Jobs{" "}
+              <span className="normal-case font-normal text-gray-400">({completedIds.length})</span>
+            </h2>
+            <button
+              onClick={clearCompletedJobs}
+              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-red-500 transition-colors"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Clear history
+            </button>
+          </div>
           <div className="space-y-2">
             {completedIds.map((id) => (
               <ProcessedJobCard key={id} jobId={id} />
