@@ -1,0 +1,9 @@
+[
+  { "ParameterKey": "Environment",                  "ParameterValue": "staging" },
+  { "ParameterKey": "AnthropicApiKey",              "ParameterValue": "REPLACE_ME" },
+  { "ParameterKey": "LambdaZipBucket",              "ParameterValue": "your-lambda-artifacts-bucket" },
+  { "ParameterKey": "LambdaZipKey",                 "ParameterValue": "lambda/sales-lead-agent.zip" },
+  { "ParameterKey": "LeadScorePriorityThreshold",   "ParameterValue": "0.75" },
+  { "ParameterKey": "LeadScoreStandardThreshold",   "ParameterValue": "0.50" },
+  { "ParameterKey": "SQSVisibilityTimeout",         "ParameterValue": "300" }
+]
