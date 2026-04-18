@@ -1,10 +1,18 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Walk up from backend/ to find .env in the project root
+_here = Path(__file__).parent
+_env_file = next(
+    (str(p / ".env") for p in [_here, _here.parent] if (p / ".env").exists()),
+    ".env",
+)
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_env_file, extra="ignore")
 
     # Groq
     groq_api_key: str = ""
