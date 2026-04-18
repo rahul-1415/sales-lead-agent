@@ -1,0 +1,525 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Sales Lead Agent — serverless AWS pipeline.
+  Provisions API Gateway, Lambda (3 functions), SQS, DynamoDB (2 tables), S3 (2 buckets),
+  IAM roles, and CloudWatch alarms.
+
+# ---------------------------------------------------------------------------
+# Parameters
+# ---------------------------------------------------------------------------
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [staging, production]
+    Default: staging
+
+  AnthropicApiKey:
+    Type: String
+    NoEcho: true
+    Description: Anthropic API key stored as a Lambda env var
+
+  LambdaZipBucket:
+    Type: String
+    Description: S3 bucket that holds the packaged Lambda ZIP (uploaded by CI/CD)
+
+  LambdaZipKey:
+    Type: String
+    Default: lambda/sales-lead-agent.zip
+    Description: S3 key of the Lambda deployment package
+
+  LeadScorePriorityThreshold:
+    Type: Number
+    Default: 0.75
+    MinValue: 0.0
+    MaxValue: 1.0
+
+  LeadScoreStandardThreshold:
+    Type: Number
+    Default: 0.50
+    MinValue: 0.0
+    MaxValue: 1.0
+
+  SQSVisibilityTimeout:
+    Type: Number
+    Default: 300
+    Description: >
+      Must be >= Lambda timeout. Lead processor timeout is 270s,
+      so 300s gives a 30s buffer before a failed message becomes visible again.
+
+# ---------------------------------------------------------------------------
+# Conditions
+# ---------------------------------------------------------------------------
+
+Conditions:
+  IsProduction: !Equals [!Ref Environment, production]
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+
+Resources:
+
+  # -------------------------------------------------------------------------
+  # S3 — input and output buckets
+  # -------------------------------------------------------------------------
+
+  InputBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "sales-lead-agent-input-${Environment}-${AWS::AccountId}"
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireRawFiles
+            Status: Enabled
+            ExpirationInDays: 90
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: "s3:ObjectCreated:*"
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: input/
+            Function: !GetAtt BatchOrchestratorFunction.Arn
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  OutputBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "sales-lead-agent-output-${Environment}-${AWS::AccountId}"
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireResults
+            Status: Enabled
+            ExpirationInDays: 365
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # Allow S3 to invoke the BatchOrchestratorFunction
+  S3InvokeBatchOrchestratorPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt BatchOrchestratorFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub "arn:aws:s3:::sales-lead-agent-input-${Environment}-${AWS::AccountId}"
+
+  # -------------------------------------------------------------------------
+  # SQS — lead processing queue + dead letter queue
+  # -------------------------------------------------------------------------
+
+  LeadDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "sales-lead-agent-dlq-${Environment}"
+      MessageRetentionPeriod: 1209600  # 14 days — gives ops team time to inspect failures
+
+  LeadQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "sales-lead-agent-queue-${Environment}"
+      VisibilityTimeout: !Ref SQSVisibilityTimeout
+      MessageRetentionPeriod: 86400  # 1 day
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt LeadDLQ.Arn
+        maxReceiveCount: 3  # retry up to 3 times before sending to DLQ
+
+  # -------------------------------------------------------------------------
+  # DynamoDB — leads table + batch jobs table
+  # -------------------------------------------------------------------------
+
+  LeadsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "leads-${Environment}"
+      BillingMode: PAY_PER_REQUEST  # on-demand — no capacity planning needed for variable workloads
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: !If [IsProduction, true, false]
+      AttributeDefinitions:
+        - AttributeName: lead_id
+          AttributeType: S
+        - AttributeName: batch_id
+          AttributeType: S
+        - AttributeName: confidence_score
+          AttributeType: N
+      KeySchema:
+        - AttributeName: lead_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: batch_id-index
+          KeySchema:
+            - AttributeName: batch_id
+              KeyType: HASH
+            - AttributeName: confidence_score
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      SSESpecification:
+        SSEEnabled: true
+
+  BatchJobsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "batch-jobs-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: job_id
+          AttributeType: S
+        - AttributeName: batch_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: job_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: batch_id-index
+          KeySchema:
+            - AttributeName: batch_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      SSESpecification:
+        SSEEnabled: true
+
+  # -------------------------------------------------------------------------
+  # IAM — shared execution role for all three Lambda functions
+  # -------------------------------------------------------------------------
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "sales-lead-agent-lambda-role-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SalesLeadAgentPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+
+              # DynamoDB — least-privilege: only the two app tables
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !GetAtt LeadsTable.Arn
+                  - !Sub "${LeadsTable.Arn}/index/*"
+                  - !GetAtt BatchJobsTable.Arn
+                  - !Sub "${BatchJobsTable.Arn}/index/*"
+
+              # S3 — input bucket read, output bucket read/write
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - !Sub "${InputBucket.Arn}/*"
+                  - !Sub "${OutputBucket.Arn}/*"
+
+              # S3 — presigned URL generation requires ListBucket on output
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt OutputBucket.Arn
+
+              # SQS — send and receive
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                  - sqs:SendMessageBatch
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt LeadQueue.Arn
+
+  # -------------------------------------------------------------------------
+  # Lambda — shared environment variables
+  # -------------------------------------------------------------------------
+
+  # (CloudFormation doesn't support YAML anchors, so we use a Mapping instead)
+  # Each function references these values explicitly below.
+
+  # -------------------------------------------------------------------------
+  # Lambda — API handler (API Gateway → FastAPI via Mangum)
+  # -------------------------------------------------------------------------
+
+  ApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "sales-lead-agent-api-${Environment}"
+      Runtime: python3.12
+      Handler: lambda_handler.api_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaZipBucket
+        S3Key: !Ref LambdaZipKey
+      Timeout: 30
+      MemorySize: 512
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          DYNAMODB_LEADS_TABLE: !Ref LeadsTable
+          DYNAMODB_JOBS_TABLE: !Ref BatchJobsTable
+          S3_INPUT_BUCKET: !Ref InputBucket
+          S3_OUTPUT_BUCKET: !Ref OutputBucket
+          SQS_QUEUE_URL: !Ref LeadQueue
+          LEAD_SCORE_PRIORITY_THRESHOLD: !Ref LeadScorePriorityThreshold
+          LEAD_SCORE_STANDARD_THRESHOLD: !Ref LeadScoreStandardThreshold
+
+  ApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/sales-lead-agent-api-${Environment}"
+      RetentionInDays: 30
+
+  # -------------------------------------------------------------------------
+  # Lambda — lead processor (SQS trigger)
+  # -------------------------------------------------------------------------
+
+  LeadProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "sales-lead-agent-processor-${Environment}"
+      Runtime: python3.12
+      Handler: lambda_handler.lead_processor
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaZipBucket
+        S3Key: !Ref LambdaZipKey
+      Timeout: 270
+      MemorySize: 1024  # higher memory = faster CPU = faster embedding + LLM calls
+      ReservedConcurrentExecutions: 50  # cap concurrent invocations to control API spend
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          DYNAMODB_LEADS_TABLE: !Ref LeadsTable
+          DYNAMODB_JOBS_TABLE: !Ref BatchJobsTable
+          S3_INPUT_BUCKET: !Ref InputBucket
+          S3_OUTPUT_BUCKET: !Ref OutputBucket
+          SQS_QUEUE_URL: !Ref LeadQueue
+          LEAD_SCORE_PRIORITY_THRESHOLD: !Ref LeadScorePriorityThreshold
+          LEAD_SCORE_STANDARD_THRESHOLD: !Ref LeadScoreStandardThreshold
+
+  LeadProcessorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/sales-lead-agent-processor-${Environment}"
+      RetentionInDays: 30
+
+  # SQS event source mapping — connects the queue to the processor Lambda
+  LeadProcessorSQSTrigger:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt LeadQueue.Arn
+      FunctionName: !GetAtt LeadProcessorFunction.Arn
+      BatchSize: 10
+      FunctionResponseTypes:
+        - ReportBatchItemFailures  # partial batch failure support
+      MaximumBatchingWindowInSeconds: 5
+
+  # -------------------------------------------------------------------------
+  # Lambda — batch orchestrator (S3 trigger)
+  # -------------------------------------------------------------------------
+
+  BatchOrchestratorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "sales-lead-agent-orchestrator-${Environment}"
+      Runtime: python3.12
+      Handler: lambda_handler.batch_orchestrator
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaZipBucket
+        S3Key: !Ref LambdaZipKey
+      Timeout: 120
+      MemorySize: 512
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          DYNAMODB_LEADS_TABLE: !Ref LeadsTable
+          DYNAMODB_JOBS_TABLE: !Ref BatchJobsTable
+          S3_INPUT_BUCKET: !Ref InputBucket
+          S3_OUTPUT_BUCKET: !Ref OutputBucket
+          SQS_QUEUE_URL: !Ref LeadQueue
+
+  BatchOrchestratorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/sales-lead-agent-orchestrator-${Environment}"
+      RetentionInDays: 30
+
+  # -------------------------------------------------------------------------
+  # API Gateway — REST API
+  # -------------------------------------------------------------------------
+
+  RestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub "sales-lead-agent-${Environment}"
+      Description: Sales Lead Agent API
+      EndpointConfiguration:
+        Types: [REGIONAL]
+
+  ApiGatewayProxyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: "{proxy+}"
+
+  ApiGatewayProxyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ApiGatewayProxyResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionArn}/invocations"
+          - FunctionArn: !GetAtt ApiFunction.Arn
+
+  ApiGatewayRootMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !GetAtt RestApi.RootResourceId
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionArn}/invocations"
+          - FunctionArn: !GetAtt ApiFunction.Arn
+
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: [ApiGatewayProxyMethod, ApiGatewayRootMethod]
+    Properties:
+      RestApiId: !Ref RestApi
+
+  ApiGatewayStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref RestApi
+      DeploymentId: !Ref ApiGatewayDeployment
+      StageName: !Ref Environment
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingBurstLimit: 100
+          ThrottlingRateLimit: 50
+
+  ApiGatewayInvokeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ApiFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*"
+
+  # -------------------------------------------------------------------------
+  # CloudWatch Alarms
+  # -------------------------------------------------------------------------
+
+  DLQDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "sales-lead-agent-dlq-depth-${Environment}"
+      AlarmDescription: Messages are landing in the DLQ — leads are failing to process
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt LeadDLQ.QueueName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  ProcessorErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "sales-lead-agent-processor-errors-${Environment}"
+      AlarmDescription: Lead processor Lambda error rate is elevated
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref LeadProcessorFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+# ---------------------------------------------------------------------------
+# Outputs
+# ---------------------------------------------------------------------------
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway base URL
+    Value: !Sub "https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
+    Export:
+      Name: !Sub "sales-lead-agent-api-endpoint-${Environment}"
+
+  LeadQueueUrl:
+    Description: SQS queue URL
+    Value: !Ref LeadQueue
+    Export:
+      Name: !Sub "sales-lead-agent-queue-url-${Environment}"
+
+  LeadQueueArn:
+    Description: SQS queue ARN
+    Value: !GetAtt LeadQueue.Arn
+
+  DLQUrl:
+    Description: Dead letter queue URL — inspect here when leads fail
+    Value: !Ref LeadDLQ
+
+  LeadsTableName:
+    Description: DynamoDB leads table
+    Value: !Ref LeadsTable
+    Export:
+      Name: !Sub "sales-lead-agent-leads-table-${Environment}"
+
+  BatchJobsTableName:
+    Description: DynamoDB batch jobs table
+    Value: !Ref BatchJobsTable
+
+  InputBucketName:
+    Description: S3 input bucket
+    Value: !Ref InputBucket
+
+  OutputBucketName:
+    Description: S3 output bucket
+    Value: !Ref OutputBucket
