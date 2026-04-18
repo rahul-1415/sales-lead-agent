@@ -8,3 +8,5 @@ dist/
 .next/
 *.zip
 .DS_Store
+node_modules/
+.next/
