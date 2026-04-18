@@ -14,10 +14,10 @@ Parameters:
     AllowedValues: [staging, production]
     Default: staging
 
-  AnthropicApiKey:
+  GroqApiKey:
     Type: String
     NoEcho: true
-    Description: Anthropic API key stored as a Lambda env var
+    Description: Groq API key stored as a Lambda env var
 
   LambdaZipBucket:
     Type: String
@@ -277,7 +277,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          GROQ_API_KEY: !Ref GroqApiKey
           DYNAMODB_LEADS_TABLE: !Ref LeadsTable
           DYNAMODB_JOBS_TABLE: !Ref BatchJobsTable
           S3_INPUT_BUCKET: !Ref InputBucket
@@ -312,7 +312,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          GROQ_API_KEY: !Ref GroqApiKey
           DYNAMODB_LEADS_TABLE: !Ref LeadsTable
           DYNAMODB_JOBS_TABLE: !Ref BatchJobsTable
           S3_INPUT_BUCKET: !Ref InputBucket
@@ -357,7 +357,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          GROQ_API_KEY: !Ref GroqApiKey
           DYNAMODB_LEADS_TABLE: !Ref LeadsTable
           DYNAMODB_JOBS_TABLE: !Ref BatchJobsTable
           S3_INPUT_BUCKET: !Ref InputBucket

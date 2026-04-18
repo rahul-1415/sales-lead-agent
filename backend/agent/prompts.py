@@ -9,8 +9,8 @@ def build_reasoning_prompt(
     email_valid: bool,
 ) -> str:
     """
-    Constructs the user-turn prompt sent to Claude for final lead reasoning.
-    Keeps all structured data out of the system prompt so it can be cached.
+    Constructs the user-turn prompt sent to Groq for final lead reasoning.
+    All structured data is in the user turn; the system prompt stays static.
     """
     sim_block = ""
     if similarity_results:

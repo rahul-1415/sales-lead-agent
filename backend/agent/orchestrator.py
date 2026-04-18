@@ -15,9 +15,8 @@ graceful defaults when a tool fails, so a single bad lead never kills a batch.
 """
 
 import logging
-from datetime import datetime, timezone
 
-import anthropic
+from groq import Groq
 
 from agent.models import (
     BatchJobStats,
@@ -44,11 +43,11 @@ class SalesLeadAgent:
     """
     Orchestrates the full lead enrichment pipeline for a single RawLead.
     Instantiate once per Lambda invocation (or once per app startup locally).
-    The Anthropic client is created once and reused across leads.
+    The Groq client is created once and reused across leads.
     """
 
     def __init__(self) -> None:
-        self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        self._client = Groq(api_key=settings.groq_api_key)
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -149,9 +148,9 @@ class SalesLeadAgent:
         email_result: EmailValidationResult,
     ) -> str:
         """
-        Calls Claude with a structured prompt. Uses extended thinking disabled
-        intentionally — we want fast, grounded reasoning, not open-ended exploration.
-        Prompt caching is applied to the system prompt (static across all leads).
+        Calls Groq (Llama 3.1 70B) for fast, grounded lead reasoning.
+        Groq's inference is ~10x faster than hosted Claude for this use case,
+        which matters when processing large batches concurrently in Lambda.
         """
         prompt = build_reasoning_prompt(
             company=company,
@@ -162,19 +161,15 @@ class SalesLeadAgent:
         )
 
         try:
-            response = self._client.messages.create(
-                model="claude-sonnet-4-6",
+            response = self._client.chat.completions.create(
+                model="llama-3.1-70b-versatile",
                 max_tokens=256,
-                system=[
-                    {
-                        "type": "text",
-                        "text": SYSTEM_PROMPT,
-                        "cache_control": {"type": "ephemeral"},  # cache system prompt across leads
-                    }
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user",   "content": prompt},
                 ],
-                messages=[{"role": "user", "content": prompt}],
             )
-            return response.content[0].text.strip()
+            return response.choices[0].message.content.strip()
         except Exception:
             logger.warning("LLM reasoning failed — using fallback", exc_info=True)
             return (
