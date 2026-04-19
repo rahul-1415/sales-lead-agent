@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { UploadForm } from "@/components/UploadForm";
 import { JobStatusCard } from "@/components/JobStatusCard";
 import { ProcessedJobCard } from "@/components/ProcessedJobCard";
@@ -13,8 +13,12 @@ import { Archive, RefreshCw, SlidersHorizontal, Trash2 } from "lucide-react";
 import { clearLeads, exportLeads } from "@/lib/api";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 
+const MIN_PROCESSING_MS = 2500;
+
 export default function DashboardPage() {
   const [processingIds, setProcessingIds] = useState<string[]>([]);
+  const [processingCounts, setProcessingCounts] = useState<Record<string, number>>({});
+  const jobStartTimes = useRef<Record<string, number>>({});
   const [scoreMin, setScoreMin] = useState(0);
   const { leads, total, loading, error, refresh } = useLeads(scoreMin);
   const { completedIds, addCompletedJob, clearCompletedJobs } = usePersistedJobs();
@@ -23,7 +27,9 @@ export default function DashboardPage() {
   const [showClearDialog, setShowClearDialog] = useState(false);
 
   function onUploaded(res: UploadResponse) {
+    jobStartTimes.current[res.job_id] = Date.now();
     setProcessingIds((prev) => [res.job_id, ...prev]);
+    setProcessingCounts((prev) => ({ ...prev, [res.job_id]: res.lead_count }));
     setTimeout(() => refresh(), 4000);
   }
 
@@ -48,9 +54,15 @@ export default function DashboardPage() {
   }
 
   const onJobComplete = useCallback((jobId: string) => {
-    setProcessingIds((prev) => prev.filter((id) => id !== jobId));
-    addCompletedJob(jobId);
-    refresh();
+    const elapsed = Date.now() - (jobStartTimes.current[jobId] ?? 0);
+    const delay = Math.max(0, MIN_PROCESSING_MS - elapsed);
+    setTimeout(() => {
+      setProcessingIds((prev) => prev.filter((id) => id !== jobId));
+      setProcessingCounts((prev) => { const next = { ...prev }; delete next[jobId]; return next; });
+      delete jobStartTimes.current[jobId];
+      addCompletedJob(jobId);
+      refresh();
+    }, delay);
   }, [addCompletedJob, refresh]);
 
   return (
@@ -68,7 +80,11 @@ export default function DashboardPage() {
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
           Upload Leads
         </h2>
-        <UploadForm onUploaded={onUploaded} />
+        <UploadForm
+          onUploaded={onUploaded}
+          isProcessing={processingIds.length > 0}
+          processingCount={processingIds.reduce((sum, id) => sum + (processingCounts[id] ?? 0), 0)}
+        />
       </section>
 
       {/* Processing jobs */}
