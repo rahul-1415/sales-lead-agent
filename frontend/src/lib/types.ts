@@ -56,6 +56,7 @@ export interface ScoreBreakdown {
 
 export interface EnrichedLead {
   lead_id: string;
+  dedup_key?: string;
   batch_id: string;
   processed_at: string;
   raw: RawLead;
@@ -73,6 +74,7 @@ export interface EnrichedLead {
 export interface BatchJobStats {
   total: number;
   processed: number;
+  duplicates: number;
   priority: number;
   standard: number;
   research: number;
@@ -95,6 +97,7 @@ export interface UploadResponse {
   job_id: string;
   batch_id: string;
   lead_count: number;
+  duplicate_count: number;
   message: string;
 }
 

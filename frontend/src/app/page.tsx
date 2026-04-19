@@ -25,11 +25,16 @@ export default function DashboardPage() {
   const [clearing, setClearing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [showClearDialog, setShowClearDialog] = useState(false);
+  const [dupSummary, setDupSummary] = useState<string | null>(null);
 
   function onUploaded(res: UploadResponse) {
     jobStartTimes.current[res.job_id] = Date.now();
     setProcessingIds((prev) => [res.job_id, ...prev]);
     setProcessingCounts((prev) => ({ ...prev, [res.job_id]: res.lead_count }));
+    setDupSummary(res.duplicate_count > 0
+      ? `${res.lead_count - res.duplicate_count} lead${res.lead_count - res.duplicate_count !== 1 ? "s" : ""} processed, ${res.duplicate_count} duplicate${res.duplicate_count !== 1 ? "s" : ""} skipped.`
+      : null
+    );
     setTimeout(() => refresh(), 4000);
   }
 
@@ -85,6 +90,18 @@ export default function DashboardPage() {
           isProcessing={processingIds.length > 0}
           processingCount={processingIds.reduce((sum, id) => sum + (processingCounts[id] ?? 0), 0)}
         />
+        {dupSummary && (
+          <div className="mt-3 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700">
+            <span>⚠️ {dupSummary}</span>
+            <button
+              onClick={() => setDupSummary(null)}
+              className="ml-4 shrink-0 text-amber-500 hover:text-amber-800 transition-colors"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Processing jobs */}
