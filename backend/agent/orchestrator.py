@@ -5,7 +5,7 @@ SalesLeadAgent — multi-step agent that processes a single RawLead through:
   Step 2  Enrich company data
   Step 3  Embedding similarity search against ICP examples
   Step 4  Build deterministic score breakdown
-  Step 5  LLM reasoning — Claude explains the score in plain English
+  Step 5  LLM reasoning — LLM explains the score in plain English
   Step 6  Decide routing action
   Step 7  Return fully structured EnrichedLead
 
@@ -164,7 +164,7 @@ class SalesLeadAgent:
 
         try:
             response = self._client.chat.completions.create(
-                model="llama-3.1-70b-versatile",
+                model="llama-3.3-70b-versatile",
                 max_tokens=256,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
