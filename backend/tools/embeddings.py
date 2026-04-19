@@ -1,50 +1,17 @@
 """
-Embedding-based similarity search using fastembed.
+Keyword-based ICP similarity search (stdlib only — no onnxruntime/fastembed).
 
-fastembed uses ONNX Runtime instead of PyTorch, making it Lambda-compatible:
-  - Package size: ~40 MB model + ~15 MB library (fits in Lambda ZIP)
-  - No GPU required, fast CPU inference
-  - Model: BAAI/bge-small-en-v1.5 — 384-dim, strong quality/size tradeoff
-
-Architecture:
-  - ICP seed examples are embedded once at Lambda cold start via build_icp_index()
-  - Vectors are cached in memory — free on warm invocations
-  - At runtime, a new lead's description is embedded and compared via cosine similarity
-  - The top score feeds into ScoreBreakdown.similarity_to_icp
+Uses Jaccard similarity over normalised word sets. Sufficient for lead scoring
+demos and keeps the Lambda ZIP well under the 250 MB unzipped limit.
 """
 
 import logging
-import math
+import re
 from typing import Optional
-
-from fastembed import TextEmbedding
 
 from agent.models import SimilarityResult
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Model — loaded once per Lambda container lifetime
-# ---------------------------------------------------------------------------
-
-_MODEL_NAME = "BAAI/bge-small-en-v1.5"
-_embedding_model: Optional[TextEmbedding] = None
-
-
-def _get_model() -> TextEmbedding:
-    global _embedding_model
-    if _embedding_model is None:
-        logger.info("loading fastembed model", extra={"model": _MODEL_NAME})
-        _embedding_model = TextEmbedding(model_name=_MODEL_NAME)
-        logger.info("fastembed model ready")
-    return _embedding_model
-
-
-def _embed(text: str) -> list[float]:
-    model = _get_model()
-    vectors = list(model.embed([text]))
-    return vectors[0].tolist()
-
 
 # ---------------------------------------------------------------------------
 # ICP seed examples
@@ -81,48 +48,39 @@ _ICP_EXAMPLES: list[dict] = [
     },
 ]
 
-_icp_index: list[tuple[str, list[float]]] = []
+# Stop words excluded from keyword matching
+_STOP_WORDS = {
+    "a", "an", "the", "and", "or", "for", "in", "on", "at", "to", "of",
+    "with", "by", "is", "are", "was", "were", "be", "been", "has", "have",
+    "its", "it", "this", "that", "across", "uses", "use", "recently",
+}
 
 
-# ---------------------------------------------------------------------------
-# Cosine similarity
-# ---------------------------------------------------------------------------
+def _tokenise(text: str) -> set[str]:
+    words = re.sub(r"[^\w\s]", "", text.lower()).split()
+    return {w for w in words if w not in _STOP_WORDS and len(w) > 2}
 
 
-def _cosine_similarity(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
-    mag_a = math.sqrt(sum(x ** 2 for x in a))
-    mag_b = math.sqrt(sum(x ** 2 for x in b))
-    if mag_a == 0 or mag_b == 0:
+def _jaccard(a: set[str], b: set[str]) -> float:
+    if not a or not b:
         return 0.0
-    return dot / (mag_a * mag_b)
+    return len(a & b) / len(a | b)
 
 
 # ---------------------------------------------------------------------------
-# Index management
+# Index — pre-tokenised ICP examples (built once at startup)
 # ---------------------------------------------------------------------------
+
+_icp_index: list[tuple[str, set[str]]] = []
 
 
 def build_icp_index() -> None:
-    """
-    Embeds all ICP examples and caches vectors in memory.
-    Called once at Lambda cold start — free on every warm invocation after.
-    """
     global _icp_index
-    logger.info("building ICP embedding index", extra={"count": len(_ICP_EXAMPLES)})
-    _icp_index = []
-    for example in _ICP_EXAMPLES:
-        text = f"{example['company']}. {example['description']}"
-        try:
-            vector = _embed(text)
-            _icp_index.append((example["company"], vector))
-        except Exception:
-            logger.warning(
-                "failed to embed ICP example",
-                extra={"company": example["company"]},
-                exc_info=True,
-            )
-    logger.info("ICP index ready", extra={"indexed": len(_icp_index)})
+    _icp_index = [
+        (ex["company"], _tokenise(f"{ex['company']} {ex['description']}"))
+        for ex in _ICP_EXAMPLES
+    ]
+    logger.info("ICP keyword index ready", extra={"count": len(_icp_index)})
 
 
 def _ensure_index() -> None:
@@ -140,26 +98,16 @@ def find_similar_leads(
     description: Optional[str],
     top_k: int = 3,
 ) -> list[SimilarityResult]:
-    """
-    Embeds the incoming lead description and returns the top-k most similar
-    ICP examples by cosine similarity.
-    """
     _ensure_index()
 
     if not description:
-        logger.debug("no description — skipping similarity search", extra={"company": company_name})
         return []
 
-    text = f"{company_name}. {description}"
-    try:
-        query_vector = _embed(text)
-    except Exception:
-        logger.warning("embedding failed for lead", extra={"company": company_name}, exc_info=True)
-        return []
+    query_tokens = _tokenise(f"{company_name} {description}")
 
     scored = [
-        (_cosine_similarity(query_vector, icp_vec), icp_company)
-        for icp_company, icp_vec in _icp_index
+        (_jaccard(query_tokens, icp_tokens), icp_company)
+        for icp_company, icp_tokens in _icp_index
     ]
     scored.sort(reverse=True)
 
@@ -167,9 +115,10 @@ def find_similar_leads(
         SimilarityResult(
             matched_company=company,
             similarity_score=round(sim, 4),
-            match_reason=f"Embedding cosine similarity: {sim:.2%}",
+            match_reason=f"Keyword similarity: {sim:.2%}",
         )
         for sim, company in scored[:top_k]
+        if sim > 0
     ]
 
 

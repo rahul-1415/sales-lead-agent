@@ -1,5 +1,4 @@
 groq
-fastembed
 fastapi
 mangum
 boto3
