@@ -1,11 +1,38 @@
 from __future__ import annotations
 
+import hashlib
+import re
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 from uuid import uuid4
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
+
+
+# ---------------------------------------------------------------------------
+# Deduplication helpers
+# ---------------------------------------------------------------------------
+
+
+def compute_dedup_key(
+    company: str,
+    contact_email: Optional[str],
+    website: Optional[str],
+) -> str:
+    """
+    Stable 16-char hex key for a lead derived from company + email/website.
+    'Acme, Inc.' and 'Acme Inc' produce the same key.
+    """
+    def _norm_company(s: str) -> str:
+        s = re.sub(r"[^\w\s]", "", s.lower().strip())
+        return re.sub(r"\s+", " ", s)
+
+    def _norm_id(s: Optional[str]) -> str:
+        return s.strip().lower() if s else ""
+
+    raw = _norm_company(company) + "|" + _norm_id(contact_email or website or "")
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +186,7 @@ class EnrichedLead(BaseModel):
     """A fully processed lead with enrichment data, score, and agent decision."""
 
     lead_id: str = Field(default_factory=lambda: str(uuid4()))
+    dedup_key: Optional[str] = None
     batch_id: str
     processed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -189,6 +217,7 @@ class EnrichedLead(BaseModel):
 class BatchJobStats(BaseModel):
     total: int = 0
     processed: int = 0
+    duplicates: int = 0
     priority: int = 0
     standard: int = 0
     research: int = 0
@@ -237,6 +266,7 @@ class UploadResponse(BaseModel):
     job_id: str
     batch_id: str
     lead_count: int
+    duplicate_count: int = 0
     message: str
 
 

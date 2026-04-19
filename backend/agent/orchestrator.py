@@ -27,6 +27,7 @@ from agent.models import (
     RawLead,
     ScoreBreakdown,
     SimilarityResult,
+    compute_dedup_key,
 )
 from agent.prompts import SYSTEM_PROMPT, build_reasoning_prompt
 from agent.scorer import adjust_for_email, build_score_breakdown, decide_action
@@ -88,6 +89,7 @@ class SalesLeadAgent:
         )
 
         return EnrichedLead(
+            dedup_key=compute_dedup_key(raw.company, raw.contact_email, raw.website),
             batch_id=batch_id,
             raw=raw,
             email_validation=email_result,
