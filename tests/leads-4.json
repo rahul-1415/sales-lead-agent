@@ -1,0 +1,76 @@
+{
+  "leads": [
+    {
+      "company": "Ironclad Freight Partners",
+      "contact_name": "Diana Reyes",
+      "contact_email": "d.reyes@ironcladfreight.com",
+      "industry": "logistics",
+      "employee_count": 850,
+      "location": "Chicago, IL",
+      "notes": "Regional freight broker expanding into warehouse management, actively evaluating TMS vendors"
+    },
+    {
+      "company": "PulsePoint Health",
+      "contact_name": "Dr. Kevin Shah",
+      "contact_email": "kshah@pulsepoint.health",
+      "industry": "healthcare",
+      "employee_count": 1200,
+      "location": "Nashville, TN",
+      "notes": "Multi-site outpatient clinic network, migrating from paper-based workflows to ERP"
+    },
+    {
+      "company": "Steelmark Industries",
+      "contact_name": "Tom Bergmann",
+      "contact_email": "tbergmann@steelmark.com",
+      "industry": "manufacturing",
+      "employee_count": 3400,
+      "location": "Pittsburgh, PA",
+      "notes": "Raised Series B in Jan 2026 to expand ERP and production scheduling capabilities"
+    },
+    {
+      "company": "Luminary Retail Group",
+      "contact_name": "Priya Nair",
+      "contact_email": "pnair@luminaryretail.com",
+      "industry": "retail",
+      "employee_count": 22,
+      "location": "Austin, TX",
+      "notes": "Early-stage DTC brand, limited budget, no dedicated ops team"
+    },
+    {
+      "company": "ClearPath Energy",
+      "contact_name": "Marcus Webb",
+      "contact_email": "mwebb@clearpathenergyco.com",
+      "industry": "energy",
+      "employee_count": 620,
+      "location": "Houston, TX",
+      "notes": "Renewable energy developer scaling field operations and compliance reporting"
+    },
+    {
+      "company": "Apex Freight Solutions",
+      "contact_name": "Sandra Kim",
+      "contact_email": "skim@apexfreight.com",
+      "industry": "logistics",
+      "employee_count": 900,
+      "location": "Kansas City, MO",
+      "notes": "Duplicate of ICP seed example — should score high on similarity"
+    },
+    {
+      "company": "NovaBridge Capital",
+      "contact_name": "Frank Deluca",
+      "contact_email": "fdeluca@novabridgecap.com",
+      "industry": "financial_services",
+      "employee_count": 48,
+      "location": "New York, NY",
+      "notes": "Boutique PE firm, very small team, unlikely to need ops tooling at scale"
+    },
+    {
+      "company": "GridCore Technologies",
+      "contact_name": "Aisha Okonkwo",
+      "contact_email": "aokonkwo@gridcoretech.com",
+      "industry": "technology",
+      "employee_count": 5200,
+      "location": "San Francisco, CA",
+      "notes": "Enterprise infrastructure SaaS, recently IPO'd, scaling procurement and vendor ops"
+    }
+  ]
+}
