@@ -283,7 +283,7 @@ async def process_leads_sync(payload: LeadBatch):
 @app.get("/leads", response_model=LeadListResponse)
 def list_leads(
     score_min: float = Query(0.0, ge=0.0, le=1.0),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(200, ge=1, le=500),
     cursor: Optional[str] = Query(None),
 ):
     if settings.is_local:

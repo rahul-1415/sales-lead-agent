@@ -39,11 +39,22 @@ def _decimals_to_floats(obj: Any) -> Any:
     return json.loads(json.dumps(obj, default=str))
 
 
-def put_lead(lead: dict) -> None:
+def put_lead(lead: dict) -> bool:
+    """
+    Write lead to DynamoDB. Returns True if written, False if already exists.
+    Conditional write prevents duplicate SQS retries from double-counting stats.
+    """
     try:
-        _table(settings.dynamodb_leads_table).put_item(Item=_floats_to_decimals(lead))
+        _table(settings.dynamodb_leads_table).put_item(
+            Item=_floats_to_decimals(lead),
+            ConditionExpression="attribute_not_exists(lead_id)",
+        )
         logger.info("stored lead", extra={"lead_id": lead.get("lead_id")})
-    except ClientError:
+        return True
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            logger.info("duplicate lead skipped", extra={"lead_id": lead.get("lead_id")})
+            return False
         logger.exception("failed to store lead", extra={"lead_id": lead.get("lead_id")})
         raise
 
@@ -64,20 +75,38 @@ def query_leads_by_batch(batch_id: str) -> list[dict]:
 
 def scan_leads(
     score_min: float = 0.0,
-    limit: int = 50,
+    limit: int = 200,
     last_evaluated_key: Optional[dict] = None,
 ) -> tuple[list[dict], Optional[dict]]:
-    kwargs: dict[str, Any] = {
-        "Limit": limit,
-        "FilterExpression": "confidence_score >= :min",
-        "ExpressionAttributeValues": {":min": Decimal(str(score_min))},
-    }
-    if last_evaluated_key:
-        kwargs["ExclusiveStartKey"] = last_evaluated_key
+    """
+    Paginate through the leads table until we collect `limit` matching items.
+    DynamoDB Limit applies to items examined (not returned), so we loop until
+    we have enough results or exhaust the table.
+    """
+    table = _table(settings.dynamodb_leads_table)
+    filter_expr = "confidence_score >= :min"
+    expr_values = {":min": Decimal(str(score_min))}
 
-    response = _table(settings.dynamodb_leads_table).scan(**kwargs)
-    items = [_decimals_to_floats(item) for item in response.get("Items", [])]
-    return items, response.get("LastEvaluatedKey")
+    collected: list[dict] = []
+    last_key = last_evaluated_key
+
+    while len(collected) < limit:
+        kwargs: dict[str, Any] = {
+            "FilterExpression": filter_expr,
+            "ExpressionAttributeValues": expr_values,
+        }
+        if last_key:
+            kwargs["ExclusiveStartKey"] = last_key
+
+        response = table.scan(**kwargs)
+        collected.extend(
+            _decimals_to_floats(item) for item in response.get("Items", [])
+        )
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            break
+
+    return collected[:limit], last_key
 
 
 # ---------------------------------------------------------------------------

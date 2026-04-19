@@ -81,12 +81,13 @@ def lead_processor(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 stats=stats,
             )
 
-            # Persist enriched lead
-            for enriched in results:
-                db.put_lead(enriched.model_dump(mode="json"))
-
-            # Increment job counters atomically
-            _update_job_progress(job_id, stats)
+            # Persist enriched lead — skip stats if already stored (duplicate SQS retry)
+            newly_stored = sum(
+                1 for enriched in results
+                if db.put_lead(enriched.model_dump(mode="json"))
+            )
+            if newly_stored > 0:
+                _update_job_progress(job_id, stats)
 
         except Exception:
             logger.exception(
