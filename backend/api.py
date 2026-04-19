@@ -273,6 +273,30 @@ def list_leads(
     )
 
 
+@app.get("/leads/export")
+def export_leads(score_min: float = Query(0.0, ge=0.0, le=1.0)):
+    """Download all current leads as NDJSON — must be defined before /leads/{lead_id}."""
+    import json
+    from fastapi.responses import StreamingResponse
+
+    if settings.is_local:
+        items = [
+            v for v in _local_leads.values()
+            if v.get("confidence_score", 0) >= score_min
+        ]
+        items.sort(key=lambda x: x.get("confidence_score", 0), reverse=True)
+    else:
+        items, _ = db.scan_leads(score_min=score_min, limit=1000)
+
+    ndjson = "\n".join(json.dumps(item, default=str) for item in items)
+
+    return StreamingResponse(
+        iter([ndjson]),
+        media_type="application/x-ndjson",
+        headers={"Content-Disposition": "attachment; filename=leads_export.ndjson"},
+    )
+
+
 @app.get("/leads/{lead_id}", response_model=EnrichedLead)
 def get_lead(lead_id: str):
     if settings.is_local:
@@ -317,30 +341,6 @@ def get_download_url(job_id: str):
     if not job.s3_output_key:
         raise HTTPException(status_code=404, detail="No output file found for this job")
     return {"download_url": storage.presigned_download_url(job.s3_output_key), "expires_in": 3600}
-
-
-@app.get("/leads/export")
-def export_leads(score_min: float = Query(0.0, ge=0.0, le=1.0)):
-    """Download all current leads as NDJSON (works in local mode and production)."""
-    import json
-    from fastapi.responses import StreamingResponse
-
-    if settings.is_local:
-        items = [
-            v for v in _local_leads.values()
-            if v.get("confidence_score", 0) >= score_min
-        ]
-        items.sort(key=lambda x: x.get("confidence_score", 0), reverse=True)
-    else:
-        items, _ = db.scan_leads(score_min=score_min, limit=1000)
-
-    ndjson = "\n".join(json.dumps(item, default=str) for item in items)
-
-    return StreamingResponse(
-        iter([ndjson]),
-        media_type="application/x-ndjson",
-        headers={"Content-Disposition": "attachment; filename=leads_export.ndjson"},
-    )
 
 
 @app.delete("/leads", status_code=200)
