@@ -1,0 +1,65 @@
+{
+  "leads": [
+    {
+      "company": "Vertex Cloud Systems",
+      "contact_name": "Alex Morgan",
+      "contact_email": "a.morgan@vertexcloud.io",
+      "industry": "technology",
+      "employee_count": 2100,
+      "location": "Seattle, WA",
+      "notes": "Series C SaaS company, actively replacing legacy infrastructure tooling"
+    },
+    {
+      "company": "Meridian Bank",
+      "contact_name": "Patricia Flores",
+      "contact_email": "pflores@meridianbank.com",
+      "industry": "financial_services",
+      "employee_count": 6400,
+      "location": "Charlotte, NC",
+      "notes": "Regional bank undergoing digital transformation, compliance-heavy procurement"
+    },
+    {
+      "company": "SkyRoute Airlines",
+      "contact_name": "James Okafor",
+      "contact_email": "jokafor@skyroute.com",
+      "industry": "logistics",
+      "employee_count": 12000,
+      "location": "Atlanta, GA",
+      "notes": "Mid-size carrier evaluating ops automation vendors for Q3 rollout"
+    },
+    {
+      "company": "Petal & Co",
+      "contact_email": "hello@petalandco.com",
+      "industry": "retail",
+      "employee_count": 14,
+      "location": "Portland, OR"
+    },
+    {
+      "company": "CoreMed Devices",
+      "contact_name": "Sandra Liu",
+      "contact_email": "sliu@coremed.com",
+      "industry": "healthcare",
+      "employee_count": 430,
+      "location": "Minneapolis, MN",
+      "notes": "FDA-regulated med device manufacturer, needs audit trail and workflow tooling"
+    },
+    {
+      "company": "TerraFarm Cooperative",
+      "contact_name": "Ben Whitfield",
+      "contact_email": "bwhitfield@terrafarm.coop",
+      "industry": "agriculture",
+      "employee_count": 310,
+      "location": "Des Moines, IA",
+      "notes": "Ag-tech co-op exploring supply chain digitization"
+    },
+    {
+      "company": "Apex Defense Group",
+      "contact_name": "Col. Ray Simmons",
+      "contact_email": "rsimmons@apexdefense.com",
+      "industry": "manufacturing",
+      "employee_count": 8900,
+      "location": "Arlington, VA",
+      "notes": "Defense contractor, long procurement cycles, high compliance requirements"
+    }
+  ]
+}

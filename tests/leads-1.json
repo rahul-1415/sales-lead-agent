@@ -1,0 +1,26 @@
+{
+  "leads": [
+    {
+      "company": "Acme Logistics",
+      "contact_name": "Jane Smith",
+      "contact_email": "jane@acmelogistics.com",
+      "industry": "logistics",
+      "employee_count": 1200,
+      "location": "Chicago, IL"
+    },
+    {
+      "company": "Nova Health",
+      "contact_email": "contact@novahealth.io",
+      "industry": "healthcare",
+      "employee_count": 340,
+      "location": "Boston, MA"
+    },
+    {
+      "company": "Bright Retail",
+      "contact_email": "hello@brightretail.com",
+      "industry": "retail",
+      "employee_count": 80,
+      "location": "Austin, TX"
+    }
+  ]
+}
