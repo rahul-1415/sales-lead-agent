@@ -209,6 +209,80 @@ aws ssm put-parameter \
 
 ---
 
+## ADR-015 — Replace fastembed/onnxruntime with Stdlib Jaccard Similarity
+
+**Decision:** Remove `fastembed` and `onnxruntime` from dependencies. Replace embedding-based ICP similarity with a pure-Python Jaccard keyword overlap.
+
+**Rationale:**
+- `onnxruntime` unzips to ~150 MB; combined with other deps the Lambda ZIP exceeded the 250 MB unzipped limit and could not be deployed
+- Lambda container images (10 GB limit) would solve the size issue but add ECR complexity — overkill for a demo
+- Jaccard similarity over stop-word-filtered word sets is sufficient for lead scoring: it correctly identifies logistics/healthcare/manufacturing matches against ICP seed examples
+- Zero additional dependencies — pure stdlib (`re`, `math`) — ZIP stays under 5 MB unzipped
+
+**Trade-off:** Lower semantic precision than vector embeddings (e.g. "freight" and "logistics" won't match unless both words appear). Acceptable for a demo; a production upgrade would restore embeddings via a Lambda Layer or container image.
+
+**Files:** `backend/tools/embeddings.py`, `backend/requirements.txt`
+
+---
+
+## ADR-016 — DynamoDB Requires Decimal, Not Float
+
+**Decision:** All numeric values written to DynamoDB are converted to `Decimal` via a JSON round-trip (`json.loads(json.dumps(obj), parse_float=Decimal)`). Values read back are converted to `float` via `json.loads(json.dumps(obj, default=str))`.
+
+**Rationale:**
+- boto3's DynamoDB SDK raises `TypeError: Float types are not supported` for any Python `float` — including values inside nested dicts/lists
+- Pydantic models use `float` throughout (`confidence_score`, `weighted_total`, score breakdown fields)
+- The safest conversion is a JSON round-trip: `json.dumps` serialises floats to JSON numbers, `parse_float=Decimal` deserialises them as `Decimal` — no manual field enumeration needed
+- The inverse (`default=str`) serialises `Decimal` back to strings then parses them as standard floats for Pydantic
+
+**Files:** `backend/db.py` (`_floats_to_decimals`, `_decimals_to_floats`)
+
+---
+
+## ADR-017 — DynamoDB Nested Map Updates Require Aliased Path Syntax
+
+**Decision:** When updating nested attributes in DynamoDB (e.g. `stats.processed`), use `ExpressionAttributeNames` with separate aliases for each path segment (`#s` → `stats`, `#processed` → `processed`) and reference them as `#s.#processed` in the `UpdateExpression`.
+
+**Rationale:**
+- DynamoDB `ExpressionAttributeNames` maps a placeholder to a single attribute name — not a dotted path
+- Using `"#processed": "stats.processed"` creates (or updates) a top-level attribute literally named `"stats.processed"` instead of the nested field — stats were silently never incrementing
+- The correct nested syntax is `ADD #s.#processed :v` with `{"#s": "stats", "#processed": "processed"}` — each segment aliased separately
+- This was the root cause of job stats never updating and jobs never reaching `COMPLETED` status
+
+**Files:** `backend/lambda_handler.py` (`_update_job_progress`)
+
+---
+
+## ADR-018 — Job Completion Detection in Lead Processor
+
+**Decision:** After each lead is processed, `_update_job_progress` uses `ReturnValues="ALL_NEW"` to get the post-update stats atomically. If `processed + errors >= total`, a second `update_item` sets `status = "completed"`.
+
+**Rationale:**
+- The batch orchestrator doesn't know when all leads finish — it only fans out messages
+- A separate "completion checker" Lambda or Step Functions state machine would add complexity
+- Using `ReturnValues="ALL_NEW"` on the existing atomic ADD gives the updated counts in the same call — no extra read needed
+- The last lead to finish (whichever Lambda invocation that is) triggers the completion write — safe because DynamoDB updates are atomic and the condition `done >= total` is monotonically true once reached
+
+**Files:** `backend/lambda_handler.py` (`_update_job_progress`)
+
+---
+
+## ADR-019 — Cross-Platform Lambda ZIP via pip --platform Flag
+
+**Decision:** Build the Lambda deployment ZIP on macOS using `pip install --platform manylinux2014_x86_64 --only-binary=:all:` to download Linux x86_64 wheels directly, without Docker.
+
+**Rationale:**
+- Lambda runs on Linux x86_64; pip on Apple Silicon downloads `darwin` wheels with ARM `.so` files — incompatible with Lambda
+- Docker (`public.ecr.aws/lambda/python:3.12`) solves this but requires Docker Desktop with sufficient disk space (hit I/O errors in practice)
+- `--platform manylinux2014_x86_64 --only-binary=:all:` instructs pip to fetch pre-built Linux wheels from PyPI directly — no compilation, no Docker needed
+- After install, `boto3`/`botocore`/`s3transfer`/`jmespath` are deleted (~26 MB saved) since Lambda's managed runtime already includes them
+
+**Trade-off:** Fails if a package has no pre-built Linux wheel on PyPI. All packages in this project (`pydantic-core`, `groq`, `fastapi`, etc.) have manylinux wheels — no issue in practice.
+
+**Files:** `backend/requirements.txt`, deploy instructions
+
+---
+
 ## ADR-013 — CORS: Explicit Origin Allowlist
 
 **Decision:** In local mode, CORS `allow_origins` is an explicit list `["http://localhost:3000", "http://127.0.0.1:3000"]` rather than `["*"]`.

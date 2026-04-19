@@ -121,6 +121,27 @@ Next Lambda cold start picks up the new value automatically.
 
 ---
 
+### 9. Stdlib Jaccard Similarity Instead of Embeddings
+**Decision**: ICP similarity search uses keyword Jaccard overlap (stdlib only) instead of `fastembed` + `onnxruntime`.
+
+**Why**: `onnxruntime` alone unzips to ~150 MB, pushing the Lambda ZIP past the 250 MB hard limit. Jaccard similarity over stop-word-filtered tokens is accurate enough for the 4 ICP seed examples used here. ZIP dropped from 300 MB → 4 MB.
+
+---
+
+### 10. DynamoDB Decimal Conversion on All Reads and Writes
+**Decision**: All floats are converted to `Decimal` before writing to DynamoDB, and back to `float` after reading, via JSON round-trips in `db.py`.
+
+**Why**: boto3's DynamoDB SDK rejects Python `float` with `TypeError` — even floats nested inside dicts or lists. A JSON round-trip (`parse_float=Decimal`) is the safest conversion — no manual field enumeration, handles arbitrary nesting.
+
+---
+
+### 11. Job Completion Detected by Last Lead Processor
+**Decision**: After each lead is stored, `_update_job_progress` reads the updated stats back (`ReturnValues="ALL_NEW"`) and marks the job `completed` if `processed + errors >= total`.
+
+**Why**: No central coordinator knows when all leads finish. The last Lambda invocation to complete naturally detects completion via atomic counter comparison. No extra reads, no polling loop, no Step Functions needed.
+
+---
+
 ## Infrastructure
 
 | Resource | Purpose |
