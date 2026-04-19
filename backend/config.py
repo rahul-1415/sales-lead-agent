@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -11,10 +12,24 @@ _env_file = next(
 )
 
 
+def _resolve_groq_key() -> str:
+    """
+    In Lambda, GROQ_API_KEY_PATH points to an SSM SecureString — fetch it at
+    cold start so key rotation only requires updating SSM, not redeploying.
+    Locally, fall back to GROQ_API_KEY from .env.
+    """
+    ssm_path = os.getenv("GROQ_API_KEY_PATH", "")
+    if ssm_path:
+        import boto3
+        ssm = boto3.client("ssm", region_name=os.getenv("AWS_REGION", "us-east-1"))
+        return ssm.get_parameter(Name=ssm_path, WithDecryption=True)["Parameter"]["Value"]
+    return os.getenv("GROQ_API_KEY", "")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=_env_file, extra="ignore")
 
-    # Groq
+    # Groq — resolved from SSM in Lambda, from .env locally
     groq_api_key: str = ""
 
     # AWS
@@ -49,4 +64,7 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    if not settings.groq_api_key:
+        settings.groq_api_key = _resolve_groq_key()
+    return settings
