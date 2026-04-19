@@ -20,7 +20,7 @@ export default function DashboardPage() {
   const [processingCounts, setProcessingCounts] = useState<Record<string, number>>({});
   const jobStartTimes = useRef<Record<string, number>>({});
   const [scoreMin, setScoreMin] = useState(0);
-  const { leads, total, loading, error, refresh } = useLeads(scoreMin);
+  const { leads, total, page, hasNext, hasPrev, loading, error, refresh, nextPage, prevPage } = useLeads(scoreMin);
   const { completedIds, addCompletedJob, clearCompletedJobs } = usePersistedJobs();
   const [clearing, setClearing] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -207,6 +207,27 @@ export default function DashboardPage() {
         )}
 
         <LeadTable leads={leads} loading={loading} />
+
+        {/* Pagination controls */}
+        {(hasPrev || hasNext) && (
+          <div className="mt-4 flex items-center justify-between text-sm text-gray-500">
+            <button
+              onClick={prevPage}
+              disabled={!hasPrev || loading}
+              className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              ← Previous
+            </button>
+            <span className="text-gray-400">Page {page}</span>
+            <button
+              onClick={nextPage}
+              disabled={!hasNext || loading}
+              className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Next →
+            </button>
+          </div>
+        )}
       </section>
 
       <ConfirmDialog
