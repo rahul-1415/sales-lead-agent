@@ -101,43 +101,66 @@ def lead_processor(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
 def _update_job_progress(job_id: str, stats: BatchJobStats) -> None:
     """
-    Increments the job's stats counters in DynamoDB.
-    Uses ADD (atomic increment) expressions to handle concurrent Lambda
-    invocations updating the same job safely.
+    Atomically increments per-lead counters and marks job COMPLETED when all
+    leads are done. Uses nested path syntax (#s.#field) for the stats map.
     """
     import boto3
+    from decimal import Decimal
     from config import get_settings
     cfg = get_settings()
 
     dynamodb = boto3.resource("dynamodb", region_name=cfg.aws_region)
     table = dynamodb.Table(cfg.dynamodb_jobs_table)
 
-    table.update_item(
+    # Atomic increment of nested stats map fields
+    response = table.update_item(
         Key={"job_id": job_id},
         UpdateExpression=(
-            "ADD #processed :p, #priority :pr, #standard :st, "
-            "#research :re, #rejected :rj, #errors :er "
+            "ADD #s.#processed :p, #s.#priority :pr, #s.#standard :st, "
+            "#s.#research :re, #s.#rejected :rj, #s.#errors :er "
             "SET #updated = :now"
         ),
         ExpressionAttributeNames={
-            "#processed": "stats.processed",
-            "#priority": "stats.priority",
-            "#standard": "stats.standard",
-            "#research": "stats.research",
-            "#rejected": "stats.rejected",
-            "#errors": "stats.errors",
+            "#s": "stats",
+            "#processed": "processed",
+            "#priority": "priority",
+            "#standard": "standard",
+            "#research": "research",
+            "#rejected": "rejected",
+            "#errors": "errors",
             "#updated": "updated_at",
         },
         ExpressionAttributeValues={
-            ":p": stats.processed,
-            ":pr": stats.priority,
-            ":st": stats.standard,
-            ":re": stats.research,
-            ":rj": stats.rejected,
-            ":er": stats.errors,
+            ":p": Decimal(stats.processed),
+            ":pr": Decimal(stats.priority),
+            ":st": Decimal(stats.standard),
+            ":re": Decimal(stats.research),
+            ":rj": Decimal(stats.rejected),
+            ":er": Decimal(stats.errors),
             ":now": _now_iso(),
         },
+        ReturnValues="ALL_NEW",
     )
+
+    # Mark job COMPLETED when processed + errors reaches total
+    updated = response.get("Attributes", {})
+    s = updated.get("stats", {})
+    total = int(s.get("total", 0))
+    done = int(s.get("processed", 0)) + int(s.get("errors", 0))
+    if total > 0 and done >= total:
+        table.update_item(
+            Key={"job_id": job_id},
+            UpdateExpression="SET #status = :done, #completed = :now, #updated = :now",
+            ExpressionAttributeNames={
+                "#status": "status",
+                "#completed": "completed_at",
+                "#updated": "updated_at",
+            },
+            ExpressionAttributeValues={
+                ":done": "completed",
+                ":now": _now_iso(),
+            },
+        )
 
 
 def _now_iso() -> str:

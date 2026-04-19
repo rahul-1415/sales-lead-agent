@@ -1,4 +1,6 @@
+import json
 import logging
+from decimal import Decimal
 from typing import Any, Optional
 
 import boto3
@@ -27,9 +29,19 @@ def _table(name: str):
 # ---------------------------------------------------------------------------
 
 
+def _floats_to_decimals(obj: Any) -> Any:
+    """DynamoDB SDK rejects float — round-trip through JSON to convert to Decimal."""
+    return json.loads(json.dumps(obj), parse_float=Decimal)
+
+
+def _decimals_to_floats(obj: Any) -> Any:
+    """DynamoDB returns Decimal — convert back to float for Pydantic."""
+    return json.loads(json.dumps(obj, default=str))
+
+
 def put_lead(lead: dict) -> None:
     try:
-        _table(settings.dynamodb_leads_table).put_item(Item=lead)
+        _table(settings.dynamodb_leads_table).put_item(Item=_floats_to_decimals(lead))
         logger.info("stored lead", extra={"lead_id": lead.get("lead_id")})
     except ClientError:
         logger.exception("failed to store lead", extra={"lead_id": lead.get("lead_id")})
@@ -38,7 +50,8 @@ def put_lead(lead: dict) -> None:
 
 def get_lead(lead_id: str) -> Optional[dict]:
     response = _table(settings.dynamodb_leads_table).get_item(Key={"lead_id": lead_id})
-    return response.get("Item")
+    item = response.get("Item")
+    return _decimals_to_floats(item) if item else None
 
 
 def query_leads_by_batch(batch_id: str) -> list[dict]:
@@ -57,13 +70,14 @@ def scan_leads(
     kwargs: dict[str, Any] = {
         "Limit": limit,
         "FilterExpression": "confidence_score >= :min",
-        "ExpressionAttributeValues": {":min": str(score_min)},
+        "ExpressionAttributeValues": {":min": Decimal(str(score_min))},
     }
     if last_evaluated_key:
         kwargs["ExclusiveStartKey"] = last_evaluated_key
 
     response = _table(settings.dynamodb_leads_table).scan(**kwargs)
-    return response.get("Items", []), response.get("LastEvaluatedKey")
+    items = [_decimals_to_floats(item) for item in response.get("Items", [])]
+    return items, response.get("LastEvaluatedKey")
 
 
 # ---------------------------------------------------------------------------
@@ -73,7 +87,7 @@ def scan_leads(
 
 def put_job(job: dict) -> None:
     try:
-        _table(settings.dynamodb_jobs_table).put_item(Item=job)
+        _table(settings.dynamodb_jobs_table).put_item(Item=_floats_to_decimals(job))
         logger.info("stored job", extra={"job_id": job.get("job_id")})
     except ClientError:
         logger.exception("failed to store job", extra={"job_id": job.get("job_id")})
@@ -82,7 +96,8 @@ def put_job(job: dict) -> None:
 
 def get_job(job_id: str) -> Optional[dict]:
     response = _table(settings.dynamodb_jobs_table).get_item(Key={"job_id": job_id})
-    return response.get("Item")
+    item = response.get("Item")
+    return _decimals_to_floats(item) if item else None
 
 
 def update_job_status(job_id: str, updates: dict) -> None:
