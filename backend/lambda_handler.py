@@ -209,13 +209,17 @@ def batch_orchestrator(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
 
 def _find_job_by_batch(batch_id: str) -> dict | None:
-    """Scans the jobs table for a matching batch_id. In production, add a GSI."""
+    """Queries the jobs table batch_id-index GSI for a matching batch_id."""
     import boto3
-    from boto3.dynamodb.conditions import Attr
+    from boto3.dynamodb.conditions import Key
     from config import get_settings
 
     cfg = get_settings()
     table = boto3.resource("dynamodb", region_name=cfg.aws_region).Table(cfg.dynamodb_jobs_table)
-    response = table.scan(FilterExpression=Attr("batch_id").eq(batch_id), Limit=1)
+    response = table.query(
+        IndexName="batch_id-index",
+        KeyConditionExpression=Key("batch_id").eq(batch_id),
+        Limit=1,
+    )
     items = response.get("Items", [])
     return items[0] if items else None

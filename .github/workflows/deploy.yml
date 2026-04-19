@@ -90,7 +90,7 @@ jobs:
       - name: Copy application code into package dir
         working-directory: backend
         run: |
-          cp -r agent tools api.py lambda_handler.py config.py db.py storage.py queue.py ./package/
+          cp -r agent tools api.py lambda_handler.py config.py db.py storage.py sqs.py ./package/
 
       - name: Create ZIP
         working-directory: backend/package
