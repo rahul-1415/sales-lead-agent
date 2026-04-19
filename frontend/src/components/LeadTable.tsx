@@ -33,7 +33,7 @@ export function LeadTable({ leads, loading }: Props) {
       <table className="min-w-full divide-y divide-gray-200 text-sm">
         <thead className="bg-gray-50">
           <tr>
-            {["Company", "Industry", "Size", "Score", "Action", "Tags"].map((h) => (
+            {["Company", "Industry", "Size", "Score", "Action", "AI Reasoning", "Tags"].map((h) => (
               <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                 {h}
               </th>
@@ -61,6 +61,11 @@ export function LeadTable({ leads, loading }: Props) {
                 </td>
                 <td className="px-4 py-3">
                   <ActionBadge action={lead.recommended_action} />
+                </td>
+                <td className="px-4 py-3 max-w-xs">
+                  <p className="text-xs text-gray-500 leading-relaxed line-clamp-2" title={lead.reasoning}>
+                    {lead.reasoning}
+                  </p>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">

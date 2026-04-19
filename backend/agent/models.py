@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, computed_field, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +158,7 @@ class ScoreBreakdown(BaseModel):
     recent_activity: float = Field(..., ge=0.0, le=1.0)    # funding, hiring signals
     similarity_to_icp: float = Field(..., ge=0.0, le=1.0)  # ideal customer profile
 
+    @computed_field
     @property
     def weighted_total(self) -> float:
         weights = {
