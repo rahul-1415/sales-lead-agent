@@ -4,9 +4,11 @@ This document tracks key technical and design decisions made during the developm
 
 ---
 
-## ADR-001 — Groq + Llama 3.1 70B for LLM Reasoning
+## ADR-001 — Groq + Llama 3.3 70B for LLM Reasoning
 
-**Decision:** Use Groq API (`llama-3.1-70b-versatile`) for lead reasoning instead of a hosted Anthropic model.
+**Decision:** Use Groq API (`llama-3.3-70b-versatile`) for lead reasoning instead of a hosted Anthropic model.
+
+> **Update:** Originally used `llama-3.1-70b-versatile`; Groq decommissioned it. Migrated to `llama-3.3-70b-versatile` — same interface, stronger reasoning.
 
 **Rationale:**
 - Free tier: 14,400 requests/day — sufficient for demo and testing without incurring cost
@@ -174,6 +176,36 @@ This document tracks key technical and design decisions made during the developm
 - CloudFormation sets `FunctionResponseTypes: [ReportBatchItemFailures]` on the event source mapping
 
 **Files:** `backend/lambda_handler.py`, `infrastructure/cloudformation.yaml`
+
+---
+
+## ADR-014 — Groq API Key Stored as SSM SecureString, Fetched at Lambda Cold Start
+
+**Decision:** The Groq API key is stored as an SSM SecureString. Lambda functions receive only the SSM **path** as an environment variable (`GROQ_API_KEY_PATH`) and fetch the key via boto3 at cold start.
+
+**Rationale:**
+- CloudFormation does not support `{{resolve:ssm-secure:...}}` dynamic references in `AWS::Lambda::Function` environment variables — it is an explicit AWS limitation
+- A plain `NoEcho` CloudFormation parameter works but requires a full stack redeploy every time the key is rotated
+- Fetching from SSM at runtime decouples key rotation from infrastructure changes: update SSM → next Lambda cold start picks up the new value automatically
+- The key is still encrypted at rest (KMS) as a SecureString; the Lambda role has `ssm:GetParameter` scoped to the exact parameter ARN — no over-permissioning
+
+**To rotate the key (no redeploy needed):**
+```bash
+aws ssm put-parameter \
+  --name /sales-lead-agent/groq-api-key \
+  --value gsk_NEW_KEY \
+  --type SecureString \
+  --overwrite
+```
+
+**Local dev fallback:** When `GROQ_API_KEY_PATH` is not set, `config.py` falls back to `GROQ_API_KEY` from `.env`.
+
+**Alternatives considered:**
+- `NoEcho` CloudFormation parameter — simpler but requires redeploy to rotate
+- `{{resolve:ssm-secure:...}}` — rejected, not supported in Lambda env vars
+- AWS Secrets Manager — same runtime-fetch pattern but adds cost; SSM is sufficient for a single API key
+
+**Files:** `backend/config.py` (`_resolve_groq_key`), `infrastructure/cloudformation.yaml` (IAM + env var), `.github/workflows/deploy.yml`
 
 ---
 
