@@ -59,8 +59,16 @@ export function getDownloadUrl(jobId: string): Promise<{ download_url: string }>
   return request(`/jobs/${jobId}/download`);
 }
 
-export function exportLeads(scoreMin = 0): string {
-  return `${BASE_URL}/leads/export?score_min=${scoreMin}`;
+export async function exportLeads(scoreMin = 0): Promise<void> {
+  const res = await fetch(`${BASE_URL}/leads/export?score_min=${scoreMin}`);
+  if (!res.ok) throw new Error(`Export failed: ${res.statusText}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "leads_export.ndjson";
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export async function clearLeads(): Promise<{ cleared: number }> {
