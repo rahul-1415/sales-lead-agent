@@ -282,8 +282,8 @@ Resources:
           GROQ_API_KEY: !Ref GroqApiKey
           DYNAMODB_LEADS_TABLE: !Ref LeadsTable
           DYNAMODB_JOBS_TABLE: !Ref BatchJobsTable
-          S3_INPUT_BUCKET: !Ref InputBucket
-          S3_OUTPUT_BUCKET: !Ref OutputBucket
+          S3_INPUT_BUCKET: !Sub "sales-lead-agent-input-${Environment}-${AWS::AccountId}"
+          S3_OUTPUT_BUCKET: !Sub "sales-lead-agent-output-${Environment}-${AWS::AccountId}"
           SQS_QUEUE_URL: !Ref LeadQueue
           LEAD_SCORE_PRIORITY_THRESHOLD: !Ref LeadScorePriorityThreshold
           LEAD_SCORE_STANDARD_THRESHOLD: !Ref LeadScoreStandardThreshold
@@ -317,8 +317,8 @@ Resources:
           GROQ_API_KEY: !Ref GroqApiKey
           DYNAMODB_LEADS_TABLE: !Ref LeadsTable
           DYNAMODB_JOBS_TABLE: !Ref BatchJobsTable
-          S3_INPUT_BUCKET: !Ref InputBucket
-          S3_OUTPUT_BUCKET: !Ref OutputBucket
+          S3_INPUT_BUCKET: !Sub "sales-lead-agent-input-${Environment}-${AWS::AccountId}"
+          S3_OUTPUT_BUCKET: !Sub "sales-lead-agent-output-${Environment}-${AWS::AccountId}"
           SQS_QUEUE_URL: !Ref LeadQueue
           LEAD_SCORE_PRIORITY_THRESHOLD: !Ref LeadScorePriorityThreshold
           LEAD_SCORE_STANDARD_THRESHOLD: !Ref LeadScoreStandardThreshold
@@ -362,8 +362,8 @@ Resources:
           GROQ_API_KEY: !Ref GroqApiKey
           DYNAMODB_LEADS_TABLE: !Ref LeadsTable
           DYNAMODB_JOBS_TABLE: !Ref BatchJobsTable
-          S3_INPUT_BUCKET: !Ref InputBucket
-          S3_OUTPUT_BUCKET: !Ref OutputBucket
+          S3_INPUT_BUCKET: !Sub "sales-lead-agent-input-${Environment}-${AWS::AccountId}"
+          S3_OUTPUT_BUCKET: !Sub "sales-lead-agent-output-${Environment}-${AWS::AccountId}"
           SQS_QUEUE_URL: !Ref LeadQueue
 
   BatchOrchestratorLogGroup:
