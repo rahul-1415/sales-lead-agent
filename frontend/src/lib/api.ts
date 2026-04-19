@@ -35,11 +35,13 @@ export function getLeads(params: {
   score_min?: number;
   limit?: number;
   cursor?: string;
+  page?: number;
 }): Promise<LeadListResponse> {
   const q = new URLSearchParams();
   if (params.score_min != null) q.set("score_min", String(params.score_min));
   if (params.limit != null)     q.set("limit",     String(params.limit));
   if (params.cursor)            q.set("cursor",    params.cursor);
+  if (params.page != null)      q.set("page",      String(params.page));
   return request<LeadListResponse>(`/leads?${q}`);
 }
 
