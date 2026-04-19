@@ -14,10 +14,10 @@ Parameters:
     AllowedValues: [staging, production]
     Default: staging
 
-  GroqApiKeyPath:
+  GroqApiKey:
     Type: String
-    Default: "/sales-lead-agent/production/groq-api-key"
-    Description: SSM Parameter Store path for the Groq API key (SecureString)
+    NoEcho: true
+    Description: Groq API key (stored as NoEcho — never shown in CloudFormation console or logs)
 
   LambdaZipBucket:
     Type: String
@@ -279,7 +279,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          GROQ_API_KEY: !Sub "{{resolve:ssm-secure:${GroqApiKeyPath}}}"
+          GROQ_API_KEY: !Ref GroqApiKey
           DYNAMODB_LEADS_TABLE: !Ref LeadsTable
           DYNAMODB_JOBS_TABLE: !Ref BatchJobsTable
           S3_INPUT_BUCKET: !Sub "sales-lead-agent-input-${Environment}-${AWS::AccountId}"
@@ -314,7 +314,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          GROQ_API_KEY: !Sub "{{resolve:ssm-secure:${GroqApiKeyPath}}}"
+          GROQ_API_KEY: !Ref GroqApiKey
           DYNAMODB_LEADS_TABLE: !Ref LeadsTable
           DYNAMODB_JOBS_TABLE: !Ref BatchJobsTable
           S3_INPUT_BUCKET: !Sub "sales-lead-agent-input-${Environment}-${AWS::AccountId}"
@@ -359,7 +359,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          GROQ_API_KEY: !Sub "{{resolve:ssm-secure:${GroqApiKeyPath}}}"
+          GROQ_API_KEY: !Ref GroqApiKey
           DYNAMODB_LEADS_TABLE: !Ref LeadsTable
           DYNAMODB_JOBS_TABLE: !Ref BatchJobsTable
           S3_INPUT_BUCKET: !Sub "sales-lead-agent-input-${Environment}-${AWS::AccountId}"
