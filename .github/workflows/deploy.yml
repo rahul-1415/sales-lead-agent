@@ -141,7 +141,6 @@ jobs:
             --capabilities CAPABILITY_NAMED_IAM \
             --parameter-overrides \
               Environment=staging \
-              GroqApiKey=${{ secrets.GROQ_API_KEY }} \
               LambdaZipBucket=${{ secrets.LAMBDA_ZIP_BUCKET }} \
               LambdaZipKey=lambda/${{ env.LAMBDA_ZIP }} \
             --no-fail-on-empty-changeset
@@ -215,7 +214,6 @@ jobs:
             --capabilities CAPABILITY_NAMED_IAM \
             --parameter-overrides \
               Environment=production \
-              GroqApiKey=${{ secrets.GROQ_API_KEY }} \
               LambdaZipBucket=${{ secrets.LAMBDA_ZIP_BUCKET }} \
               LambdaZipKey=lambda/${{ env.LAMBDA_ZIP }} \
             --no-fail-on-empty-changeset
