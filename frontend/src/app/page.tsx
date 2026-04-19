@@ -19,11 +19,21 @@ export default function DashboardPage() {
   const { leads, total, loading, error, refresh } = useLeads(scoreMin);
   const { completedIds, addCompletedJob, clearCompletedJobs } = usePersistedJobs();
   const [clearing, setClearing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [showClearDialog, setShowClearDialog] = useState(false);
 
   function onUploaded(res: UploadResponse) {
     setProcessingIds((prev) => [res.job_id, ...prev]);
     setTimeout(() => refresh(), 4000);
+  }
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      await exportLeads(scoreMin);
+    } finally {
+      setExporting(false);
+    }
   }
 
   async function handleClearConfirmed() {
@@ -130,14 +140,14 @@ export default function DashboardPage() {
                 ))}
               </select>
             </div>
-            <a
-              href={exportLeads(scoreMin)}
-              download="leads_export.ndjson"
-              className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+            <button
+              onClick={handleExport}
+              disabled={exporting || total === 0}
+              className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
             >
               <Archive className="h-3.5 w-3.5" />
-              Export
-            </a>
+              {exporting ? "Exporting…" : "Export"}
+            </button>
             {total > 0 && (
               <button
                 onClick={() => setShowClearDialog(true)}
