@@ -315,7 +315,6 @@ Resources:
         S3Key: !Ref LambdaZipKey
       Timeout: 270
       MemorySize: 1024  # higher memory = faster CPU = faster embedding + LLM calls
-      ReservedConcurrentExecutions: 50  # cap concurrent invocations to control API spend
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
