@@ -34,6 +34,7 @@ from agent.models import (
     LeadListResponse,
     RawLead,
     UploadResponse,
+    compute_dedup_key,
 )
 from agent.orchestrator import process_batch
 from config import get_settings
@@ -161,16 +162,35 @@ async def _upload_local(
     job_id: str,
 ) -> UploadResponse:
     """Process synchronously and store results in the in-memory store."""
+    # Build the set of dedup keys already stored (guard against pre-feature records)
+    existing_keys: set[str] = {
+        v["dedup_key"] for v in _local_leads.values() if v.get("dedup_key")
+    }
+
+    # Intra-batch + cross-batch dedup — filter before any LLM calls
+    seen_this_batch: set[str] = set()
+    unique_leads: list[RawLead] = []
+    duplicate_count = 0
+
+    for lead in leads:
+        key = compute_dedup_key(lead.company, lead.contact_email, lead.website)
+        if key in existing_keys or key in seen_this_batch:
+            duplicate_count += 1
+            logger.info("duplicate skipped", extra={"company": lead.company, "key": key})
+        else:
+            seen_this_batch.add(key)
+            unique_leads.append(lead)
+
     job = BatchJob(
         job_id=job_id,
         batch_id=batch_id,
         status=JobStatus.PROCESSING,
-        stats=BatchJobStats(total=len(leads)),
+        stats=BatchJobStats(total=len(unique_leads), duplicates=duplicate_count),
     )
     _local_jobs[job_id] = job.model_dump(mode="json")
 
-    stats = BatchJobStats(total=len(leads))
-    results = process_batch(leads=leads, batch_id=batch_id, job_id=job_id, stats=stats)
+    stats = BatchJobStats(total=len(unique_leads), duplicates=duplicate_count)
+    results = process_batch(leads=unique_leads, batch_id=batch_id, job_id=job_id, stats=stats)
 
     for lead in results:
         _local_leads[lead.lead_id] = lead.model_dump(mode="json")
@@ -179,12 +199,18 @@ async def _upload_local(
     job.mark_completed()
     _local_jobs[job_id] = job.model_dump(mode="json")
 
-    logger.info("local batch processed", extra={"job_id": job_id, "count": len(results)})
+    processed = len(results)
+    skipped_msg = (
+        f", {duplicate_count} duplicate{'s' if duplicate_count != 1 else ''} skipped"
+        if duplicate_count else ""
+    )
+    logger.info("local batch processed", extra={"job_id": job_id, "count": processed, "duplicates": duplicate_count})
     return UploadResponse(
         job_id=job_id,
         batch_id=batch_id,
         lead_count=len(leads),
-        message=f"{len(results)} leads processed successfully.",
+        duplicate_count=duplicate_count,
+        message=f"{processed} lead{'s' if processed != 1 else ''} processed{skipped_msg}.",
     )
 
 
@@ -196,7 +222,12 @@ async def _upload_aws(
     job_id: str,
     content_type: Optional[str],
 ) -> UploadResponse:
-    """Production path — S3 + DynamoDB + SQS."""
+    """Production path — S3 + DynamoDB + SQS.
+
+    TODO: dedup not implemented for the AWS path.
+    Production fix: add a GSI on `dedup_key` in the DynamoDB leads table,
+    then query per-lead before enqueue to skip already-stored leads.
+    """
     s3_key = f"input/{batch_id}/{filename}"
     storage.upload_raw(content, s3_key, content_type=content_type or "text/csv")
 
