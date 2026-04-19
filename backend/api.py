@@ -53,9 +53,14 @@ _LOCAL_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
+_PROD_ORIGINS = [
+    "https://sales-lead-agent.vercel.app",        # update to your actual Vercel URL
+    "https://sales-lead-agent-*.vercel.app",      # preview deployments
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_LOCAL_ORIGINS if settings.is_local else ["https://your-frontend-domain.com"],
+    allow_origins=_LOCAL_ORIGINS if settings.is_local else _PROD_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
