@@ -14,10 +14,10 @@ Parameters:
     AllowedValues: [staging, production]
     Default: staging
 
-  GroqApiKey:
+  GroqApiKeyPath:
     Type: String
-    NoEcho: true
-    Description: Groq API key (stored as NoEcho — never shown in CloudFormation console or logs)
+    Default: "/sales-lead-agent/groq-api-key"
+    Description: SSM Parameter Store path for the Groq API key (SecureString)
 
   LambdaZipBucket:
     Type: String
@@ -253,6 +253,11 @@ Resources:
                   - sqs:GetQueueAttributes
                 Resource: !GetAtt LeadQueue.Arn
 
+              # SSM — read Groq API key (SecureString) at Lambda cold start
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${GroqApiKeyPath}"
+
   # -------------------------------------------------------------------------
   # Lambda — shared environment variables
   # -------------------------------------------------------------------------
@@ -279,7 +284,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          GROQ_API_KEY: !Ref GroqApiKey
+          GROQ_API_KEY_PATH: !Ref GroqApiKeyPath
           DYNAMODB_LEADS_TABLE: !Ref LeadsTable
           DYNAMODB_JOBS_TABLE: !Ref BatchJobsTable
           S3_INPUT_BUCKET: !Sub "sales-lead-agent-input-${Environment}-${AWS::AccountId}"
@@ -314,7 +319,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          GROQ_API_KEY: !Ref GroqApiKey
+          GROQ_API_KEY_PATH: !Ref GroqApiKeyPath
           DYNAMODB_LEADS_TABLE: !Ref LeadsTable
           DYNAMODB_JOBS_TABLE: !Ref BatchJobsTable
           S3_INPUT_BUCKET: !Sub "sales-lead-agent-input-${Environment}-${AWS::AccountId}"
@@ -359,7 +364,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          GROQ_API_KEY: !Ref GroqApiKey
+          GROQ_API_KEY_PATH: !Ref GroqApiKeyPath
           DYNAMODB_LEADS_TABLE: !Ref LeadsTable
           DYNAMODB_JOBS_TABLE: !Ref BatchJobsTable
           S3_INPUT_BUCKET: !Sub "sales-lead-agent-input-${Environment}-${AWS::AccountId}"
