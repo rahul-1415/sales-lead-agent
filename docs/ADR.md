@@ -293,3 +293,61 @@ aws ssm put-parameter \
 - `is_local` flag in `config.py` controls which list is used; `.env` is loaded by walking up the directory tree from `backend/` so the flag resolves correctly regardless of working directory
 
 **Files:** `backend/api.py:50`, `backend/config.py`
+
+---
+
+## ADR-020 — Idempotent Lead Storage via Conditional DynamoDB Write
+
+**Decision:** `db.put_lead()` uses a `ConditionExpression="attribute_not_exists(lead_id)"` conditional write and returns `True` if the item was stored, `False` if it already existed. The Lambda handler only increments job stats when `put_lead` returns `True`.
+
+**Rationale:**
+- SQS guarantees at-least-once delivery — a lead message can be retried after a transient error
+- Without idempotency, a retried message would re-process and re-store the same lead, inflating `processed` stats and potentially exceeding `total`, breaking the completion check
+- DynamoDB conditional writes are atomic — no separate read-then-write race condition
+- The boolean return value lets the caller decide whether to count the lead without requiring a second read
+- `ConditionalCheckFailedException` from boto3 is the expected "already exists" signal and is caught explicitly; all other `ClientError` exceptions are re-raised
+
+**Files:** `backend/db.py` (`put_lead`), `backend/lambda_handler.py` (`lead_processor`)
+
+---
+
+## ADR-021 — DynamoDB Scan Requires Explicit `Limit` for Cursor Pagination
+
+**Decision:** `db.scan_leads()` passes `Limit` directly to the DynamoDB `scan()` call and returns `response.get("LastEvaluatedKey")` as the pagination cursor. The API endpoint accepts a `cursor` (base64-encoded JSON) and `limit` parameter.
+
+**Rationale:**
+- Without a `Limit`, DynamoDB scans the entire table and never returns `LastEvaluatedKey` — pagination was impossible; the frontend was capped at 20 items regardless of how many leads existed
+- With `Limit=N`, DynamoDB stops after examining N items and returns `LastEvaluatedKey` if more items exist — one scan call per page
+- `FilterExpression` is applied after `Limit` — the actual returned count may be less than `Limit` if many items fail the score filter; this is a known DynamoDB scan trade-off acceptable for a demo
+- The cursor is JSON-serialized and base64-encoded for URL safety; the API decodes it back to a DynamoDB key on subsequent requests
+
+**Files:** `backend/db.py` (`scan_leads`), `backend/api.py` (`list_leads`)
+
+---
+
+## ADR-022 — React Ref Guard for Single-Fire Polling Callback
+
+**Decision:** `JobStatusCard` uses a `completedFired = useRef(false)` guard to ensure `onComplete(jobId)` is called exactly once, even though `useJobStatus` continues polling after completion.
+
+**Rationale:**
+- `useJobStatus` polls `/jobs/{jobId}` every second; once the job reaches `completed` or `failed`, subsequent polls return the same terminal status
+- Each poll triggers a state update → React re-runs the `useEffect` → `onComplete` was being called on every subsequent render cycle, not just the first
+- A `useRef` flag persists across re-renders without causing a re-render itself — it's the correct primitive for "fire once" logic
+- Alternatives (polling stop, status caching) would require more invasive changes to `useJobStatus`; the ref guard is local to `JobStatusCard` and self-contained
+
+**Files:** `frontend/src/components/JobStatusCard.tsx`
+
+---
+
+## ADR-023 — Cursor-Based Frontend Pagination with History Array
+
+**Decision:** `useLeads` maintains a `cursors` ref array where `cursors[n]` holds the DynamoDB cursor needed to fetch page `n+1`. Page 1 uses no cursor (`undefined`). Previous-page navigation reuses the stored cursor for that page index.
+
+**Rationale:**
+- DynamoDB cursor-based pagination is forward-only by design — there is no built-in "previous page" cursor
+- Storing the cursor for each page as it is fetched allows backward navigation: `cursors[page-2]` is the cursor for the page before the current one
+- The array is stored in a `useRef` (not `useState`) so updates don't trigger re-renders
+- When `scoreMin` changes, the cursor array is reset to `[undefined]` and the user returns to page 1 — ensures filters don't mix cursor state from a different dataset
+- Page size is fixed at 20 per page matching the DynamoDB `Limit` — consistent UX
+
+**Files:** `frontend/src/hooks/useLeads.ts`, `frontend/src/app/page.tsx`
