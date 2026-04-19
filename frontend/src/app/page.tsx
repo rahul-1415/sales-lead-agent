@@ -208,9 +208,9 @@ export default function DashboardPage() {
 
         <LeadTable leads={leads} loading={loading} />
 
-        {/* Pagination controls */}
-        {(hasPrev || hasNext) && (
-          <div className="mt-4 flex items-center justify-between text-sm text-gray-500">
+        {/* Pagination controls — always visible when there are leads */}
+        {total > 0 && (
+          <div className="mt-4 flex items-center justify-between">
             <button
               onClick={prevPage}
               disabled={!hasPrev || loading}
@@ -218,7 +218,7 @@ export default function DashboardPage() {
             >
               ← Previous
             </button>
-            <span className="text-gray-400">Page {page}</span>
+            <span className="text-sm text-gray-400">Page {page}</span>
             <button
               onClick={nextPage}
               disabled={!hasNext || loading}
