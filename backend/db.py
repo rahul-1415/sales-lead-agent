@@ -75,38 +75,25 @@ def query_leads_by_batch(batch_id: str) -> list[dict]:
 
 def scan_leads(
     score_min: float = 0.0,
-    limit: int = 200,
+    limit: int = 20,
     last_evaluated_key: Optional[dict] = None,
 ) -> tuple[list[dict], Optional[dict]]:
     """
-    Paginate through the leads table until we collect `limit` matching items.
-    DynamoDB Limit applies to items examined (not returned), so we loop until
-    we have enough results or exhaust the table.
+    Single DynamoDB scan page. Limit is passed directly so DynamoDB stops
+    after examining `limit` items and returns a LastEvaluatedKey cursor for
+    the next page. FilterExpression is applied server-side.
     """
-    table = _table(settings.dynamodb_leads_table)
-    filter_expr = "confidence_score >= :min"
-    expr_values = {":min": Decimal(str(score_min))}
+    kwargs: dict[str, Any] = {
+        "Limit": limit,
+        "FilterExpression": "confidence_score >= :min",
+        "ExpressionAttributeValues": {":min": Decimal(str(score_min))},
+    }
+    if last_evaluated_key:
+        kwargs["ExclusiveStartKey"] = last_evaluated_key
 
-    collected: list[dict] = []
-    last_key = last_evaluated_key
-
-    while len(collected) < limit:
-        kwargs: dict[str, Any] = {
-            "FilterExpression": filter_expr,
-            "ExpressionAttributeValues": expr_values,
-        }
-        if last_key:
-            kwargs["ExclusiveStartKey"] = last_key
-
-        response = table.scan(**kwargs)
-        collected.extend(
-            _decimals_to_floats(item) for item in response.get("Items", [])
-        )
-        last_key = response.get("LastEvaluatedKey")
-        if not last_key:
-            break
-
-    return collected[:limit], last_key
+    response = _table(settings.dynamodb_leads_table).scan(**kwargs)
+    items = [_decimals_to_floats(item) for item in response.get("Items", [])]
+    return items, response.get("LastEvaluatedKey")
 
 
 # ---------------------------------------------------------------------------

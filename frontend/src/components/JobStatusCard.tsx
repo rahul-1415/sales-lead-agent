@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useJobStatus } from "@/hooks/useJobStatus";
 import type { JobStatus } from "@/lib/types";
 import clsx from "clsx";
@@ -27,9 +27,11 @@ interface Props {
 
 export function JobStatusCard({ jobId, onComplete }: Props) {
   const { job, error } = useJobStatus(jobId);
+  const completedFired = useRef(false);
 
   useEffect(() => {
-    if ((job?.status === "completed" || job?.status === "failed") && onComplete) {
+    if ((job?.status === "completed" || job?.status === "failed") && onComplete && !completedFired.current) {
+      completedFired.current = true;
       onComplete(jobId);
     }
   }, [job?.status, jobId, onComplete]);
