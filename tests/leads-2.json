@@ -1,0 +1,56 @@
+{
+  "leads": [
+    {
+      "company": "Ironbridge Manufacturing",
+      "contact_name": "David Chen",
+      "contact_email": "d.chen@ironbridgemfg.com",
+      "industry": "manufacturing",
+      "employee_count": 3200,
+      "location": "Columbus, OH",
+      "notes": "Recently raised Series B, expanding ERP capabilities"
+    },
+    {
+      "company": "PharmaCore Solutions",
+      "contact_name": "Sarah Patel",
+      "contact_email": "spatel@pharmacore.com",
+      "industry": "healthcare",
+      "employee_count": 780,
+      "location": "Philadelphia, PA",
+      "notes": "Migrating off legacy TMS, active procurement cycle"
+    },
+    {
+      "company": "ClearPath Freight",
+      "contact_name": "Mike Torres",
+      "contact_email": "mtor@clearpath.io",
+      "industry": "logistics",
+      "employee_count": 5500,
+      "location": "Dallas, TX",
+      "notes": "Enterprise freight brokerage, uses Oracle TMS"
+    },
+    {
+      "company": "SnapTrend Agency",
+      "contact_name": "Lily Wu",
+      "contact_email": "lily@snaptrend.agency",
+      "industry": "marketing",
+      "employee_count": 22,
+      "location": "Los Angeles, CA"
+    },
+    {
+      "company": "GridPower Energy",
+      "contact_name": "Tom Nakamura",
+      "contact_email": "tnakamura@gridpower.com",
+      "industry": "energy",
+      "employee_count": 1800,
+      "location": "Houston, TX",
+      "notes": "Utilities provider exploring workflow automation for field ops"
+    },
+    {
+      "company": "BlueChip Capital",
+      "contact_name": "Rachel Kim",
+      "contact_email": "rkim@bluechip.vc",
+      "industry": "financial_services",
+      "employee_count": 95,
+      "location": "New York, NY"
+    }
+  ]
+}
