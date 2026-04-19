@@ -283,8 +283,9 @@ async def process_leads_sync(payload: LeadBatch):
 @app.get("/leads", response_model=LeadListResponse)
 def list_leads(
     score_min: float = Query(0.0, ge=0.0, le=1.0),
-    limit: int = Query(200, ge=1, le=500),
+    limit: int = Query(20, ge=1, le=100),
     cursor: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
 ):
     if settings.is_local:
         items = [
@@ -292,20 +293,24 @@ def list_leads(
             if v.get("confidence_score", 0) >= score_min
         ]
         items.sort(key=lambda x: x.get("confidence_score", 0), reverse=True)
+        start = (page - 1) * limit
+        page_items = items[start : start + limit]
         return LeadListResponse(
-            leads=[EnrichedLead(**item) for item in items[:limit]],
+            leads=[EnrichedLead(**item) for item in page_items],
             total=len(items),
-            page=1,
+            page=page,
             page_size=limit,
+            next_cursor=None if start + limit >= len(items) else str(start + limit),
         )
 
     last_key = json.loads(cursor) if cursor else None
-    items, _ = db.scan_leads(score_min=score_min, limit=limit, last_evaluated_key=last_key)
+    items, next_key = db.scan_leads(score_min=score_min, limit=limit, last_evaluated_key=last_key)
     return LeadListResponse(
         leads=[EnrichedLead(**item) for item in items],
         total=len(items),
-        page=1,
+        page=page,
         page_size=limit,
+        next_cursor=json.dumps(next_key) if next_key else None,
     )
 
 

@@ -276,6 +276,7 @@ class LeadListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+    next_cursor: Optional[str] = None  # JSON-encoded DynamoDB LastEvaluatedKey
 
 
 class JobStatusResponse(BaseModel):

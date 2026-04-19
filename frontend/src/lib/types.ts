@@ -106,4 +106,5 @@ export interface LeadListResponse {
   total: number;
   page: number;
   page_size: number;
+  next_cursor?: string | null;
 }
