@@ -156,7 +156,7 @@ export default function DashboardPage() {
       <section>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-            Leads {total > 0 && <span className="normal-case font-normal text-gray-400">({total})</span>}
+            Leads {total > 0 && <span className="normal-case font-normal text-gray-400">(showing: {leads.length} / {total})</span>}
           </h2>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-sm text-gray-600">
