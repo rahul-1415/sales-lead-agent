@@ -75,6 +75,16 @@ def query_leads_by_batch(batch_id: str) -> list[dict]:
     return response.get("Items", [])
 
 
+def lead_exists_by_dedup_key(dedup_key: str) -> bool:
+    """Query the dedup_key GSI — O(1) check without a full table scan."""
+    response = _table(settings.dynamodb_leads_table).query(
+        IndexName="dedup_key-index",
+        KeyConditionExpression=Key("dedup_key").eq(dedup_key),
+        Select="COUNT",
+    )
+    return response["Count"] > 0
+
+
 def count_leads(score_min: float = 0.0) -> int:
     """Full table scan returning only the count — no item data transferred."""
     kwargs: dict[str, Any] = {

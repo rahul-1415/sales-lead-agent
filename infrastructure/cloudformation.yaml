@@ -157,6 +157,8 @@ Resources:
           AttributeType: S
         - AttributeName: confidence_score
           AttributeType: N
+        - AttributeName: dedup_key
+          AttributeType: S
       KeySchema:
         - AttributeName: lead_id
           KeyType: HASH
@@ -169,6 +171,12 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
+        - IndexName: dedup_key-index
+          KeySchema:
+            - AttributeName: dedup_key
+              KeyType: HASH
+          Projection:
+            ProjectionType: KEYS_ONLY
       SSESpecification:
         SSEEnabled: true
 
