@@ -53,8 +53,9 @@ def test_no_similarity_results_gives_zero_icp():
 
 
 def test_dedup_key_normalises_company_name():
-    assert compute_dedup_key("Acme, Inc.", "jane@acme.com", None) == \
-           compute_dedup_key("acme inc", "jane@acme.com", None)
+    assert compute_dedup_key("Acme, Inc.", "jane@acme.com", None) == compute_dedup_key(
+        "acme inc", "jane@acme.com", None
+    )
 
 
 def test_dedup_key_email_takes_precedence_over_website():
