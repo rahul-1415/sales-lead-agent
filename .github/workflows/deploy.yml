@@ -14,6 +14,9 @@ on:
         type: choice
         options: [staging, production]
 
+permissions:
+  contents: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
