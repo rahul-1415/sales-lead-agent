@@ -75,6 +75,23 @@ def query_leads_by_batch(batch_id: str) -> list[dict]:
     return response.get("Items", [])
 
 
+def count_leads(score_min: float = 0.0) -> int:
+    """Full table scan returning only the count — no item data transferred."""
+    kwargs: dict[str, Any] = {
+        "Select": "COUNT",
+        "FilterExpression": "confidence_score >= :min",
+        "ExpressionAttributeValues": {":min": Decimal(str(score_min))},
+    }
+    total = 0
+    while True:
+        response = _table(settings.dynamodb_leads_table).scan(**kwargs)
+        total += response["Count"]
+        if "LastEvaluatedKey" not in response:
+            break
+        kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+    return total
+
+
 def scan_leads(
     score_min: float = 0.0,
     limit: int = 20,
