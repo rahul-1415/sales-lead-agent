@@ -19,6 +19,11 @@ Parameters:
     Default: "/sales-lead-agent/groq-api-key"
     Description: SSM Parameter Store path for the Groq API key (SecureString)
 
+  VoyageApiKeyPath:
+    Type: String
+    Default: "/sales-lead-agent/voyage-api-key"
+    Description: SSM Parameter Store path for the Voyage AI API key (SecureString)
+
   LambdaZipBucket:
     Type: String
     Description: S3 bucket that holds the packaged Lambda ZIP (uploaded by CI/CD)
@@ -253,10 +258,12 @@ Resources:
                   - sqs:GetQueueAttributes
                 Resource: !GetAtt LeadQueue.Arn
 
-              # SSM — read Groq API key (SecureString) at Lambda cold start
+              # SSM — read API keys (SecureString) at Lambda cold start
               - Effect: Allow
                 Action: ssm:GetParameter
-                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${GroqApiKeyPath}"
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${GroqApiKeyPath}"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${VoyageApiKeyPath}"
 
   # -------------------------------------------------------------------------
   # Lambda — shared environment variables
@@ -319,6 +326,7 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           GROQ_API_KEY_PATH: !Ref GroqApiKeyPath
+          VOYAGE_API_KEY_PATH: !Ref VoyageApiKeyPath
           DYNAMODB_LEADS_TABLE: !Ref LeadsTable
           DYNAMODB_JOBS_TABLE: !Ref BatchJobsTable
           S3_INPUT_BUCKET: !Sub "sales-lead-agent-input-${Environment}-${AWS::AccountId}"
