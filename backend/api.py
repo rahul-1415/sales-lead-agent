@@ -331,7 +331,7 @@ def list_leads(
     )
     return LeadListResponse(
         leads=[EnrichedLead(**item) for item in items],
-        total=len(items),
+        total=db.count_leads(score_min=score_min),
         page=page,
         page_size=limit,
         next_cursor=json.dumps(next_key) if next_key else None,
