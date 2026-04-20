@@ -254,6 +254,7 @@ async def _upload_aws(
     s3_key = f"input/{batch_id}/{filename}"
     storage.upload_raw(content, s3_key, content_type=content_type or "text/csv")
 
+    # Job starts with total=len(leads) — orchestrator will update after dedup
     job = BatchJob(
         job_id=job_id,
         batch_id=batch_id,
@@ -263,13 +264,11 @@ async def _upload_aws(
     )
     db.put_job(job.model_dump(mode="json"))
 
-    sqs.enqueue_batch(
-        leads=[lead.model_dump(mode="json") for lead in leads],
-        batch_id=batch_id,
-        job_id=job_id,
+    # Do NOT enqueue to SQS here — the S3 upload triggers the orchestrator Lambda
+    # which owns dedup + fan-out. Enqueueing here caused double-processing.
+    logger.info(
+        "batch uploaded to S3", extra={"job_id": job_id, "lead_count": len(leads)}
     )
-
-    logger.info("batch enqueued", extra={"job_id": job_id, "lead_count": len(leads)})
     return UploadResponse(
         job_id=job_id,
         batch_id=batch_id,
