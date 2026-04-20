@@ -284,7 +284,10 @@ async def process_leads_sync(payload: LeadBatch):
     if len(payload.leads) > 50:
         raise HTTPException(
             status_code=400,
-            detail="Synchronous endpoint limited to 50 leads. Use /leads/upload for larger batches.",
+            detail=(
+                "Synchronous endpoint limited to 50 leads. "
+                "Use /leads/upload for larger batches."
+            ),
         )
     stats = BatchJobStats(total=len(payload.leads))
     results = process_batch(

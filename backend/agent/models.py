@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, EmailStr, Field, computed_field, field_validator
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 # ---------------------------------------------------------------------------
 # Deduplication helpers
