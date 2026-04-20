@@ -142,6 +142,7 @@ jobs:
             --parameter-overrides \
               Environment=staging \
               GroqApiKeyPath=/sales-lead-agent/groq-api-key \
+              VoyageApiKeyPath=/sales-lead-agent/voyage-api-key \
               LambdaZipBucket=${{ secrets.LAMBDA_ZIP_BUCKET }} \
               LambdaZipKey=lambda/${{ env.LAMBDA_ZIP }} \
             --no-fail-on-empty-changeset
