@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # Groq — resolved from SSM in Lambda, from .env locally
     groq_api_key: str = ""
 
+    # Voyage AI — optional, enables semantic embeddings; falls back to Jaccard if unset
+    voyage_api_key: str = ""
+
     # AWS
     aws_region: str = "us-east-1"
     aws_access_key_id: str = ""
