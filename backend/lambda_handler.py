@@ -219,16 +219,55 @@ def batch_orchestrator(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
                 leads = _parse_json(raw_bytes)
 
-            sqs_module.enqueue_batch(
-                leads=[lead.model_dump(mode="json") for lead in leads],
-                batch_id=batch_id,
-                job_id=job_id,
+            # Dedup: filter leads whose dedup_key already exists in DynamoDB
+            from agent.models import compute_dedup_key
+
+            seen: set[str] = set()
+            unique_leads, duplicate_count = [], 0
+            for lead in leads:
+                key_ = compute_dedup_key(lead.company, lead.contact_email, lead.website)
+                if key_ in seen or db.lead_exists_by_dedup_key(key_):
+                    duplicate_count += 1
+                else:
+                    seen.add(key_)
+                    unique_leads.append(lead)
+
+            logger.info(
+                "dedup complete",
+                extra={
+                    "total": len(leads),
+                    "unique": len(unique_leads),
+                    "duplicates": duplicate_count,
+                },
             )
 
-            db.update_job_status(job_id, {"status": JobStatus.PROCESSING.value})
+            if unique_leads:
+                sqs_module.enqueue_batch(
+                    leads=[lead.model_dump(mode="json") for lead in unique_leads],
+                    batch_id=batch_id,
+                    job_id=job_id,
+                )
+
+            # Update job total to reflect only unique leads
+            db.update_job_status(
+                job_id,
+                {
+                    "status": JobStatus.PROCESSING.value,
+                    "stats": {
+                        "total": len(unique_leads),
+                        "processed": 0,
+                        "priority": 0,
+                        "standard": 0,
+                        "research": 0,
+                        "rejected": 0,
+                        "errors": 0,
+                        "duplicates": duplicate_count,
+                    },
+                },
+            )
             logger.info(
                 "batch fanned out",
-                extra={"job_id": job_id, "lead_count": len(leads)},
+                extra={"job_id": job_id, "lead_count": len(unique_leads)},
             )
 
         except Exception:
