@@ -10,3 +10,5 @@ dist/
 .DS_Store
 node_modules/
 .next/
+backend/package/
+backend/lambda.zip
