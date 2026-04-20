@@ -2,12 +2,18 @@ name: CI / CD
 
 on:
   push:
-    branches: [main, staging]
+    branches: ["**"]   # lint + test on every branch push
   pull_request:
     branches: [main]
+  workflow_dispatch:   # deploy only when manually triggered
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: production
+        type: choice
+        options: [staging, production]
 
-# Cancel in-flight runs for the same branch so a fast follow-up push
-# doesn't queue behind a superseded deploy.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -19,8 +25,7 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Job 1 — lint + test
-  # Runs on every push and every PR. No AWS credentials needed.
+  # Job 1 — lint + test (runs on every push and PR)
   # ---------------------------------------------------------------------------
   test:
     name: Lint & Test
@@ -42,17 +47,17 @@ jobs:
 
       - name: Lint — black (format check)
         working-directory: backend
-        run: black --check .
+        run: black --check --exclude package/ .
 
       - name: Lint — flake8
         working-directory: backend
-        run: flake8 . --max-line-length=100 --exclude=.venv
+        run: flake8 . --max-line-length=100 --exclude=.venv,package
 
       - name: Test — pytest
         working-directory: backend
         env:
           ENVIRONMENT: local
-          ANTHROPIC_API_KEY: ""       # tests use mocks, no real key needed
+          ANTHROPIC_API_KEY: ""
           AWS_DEFAULT_REGION: us-east-1
           DYNAMODB_LEADS_TABLE: leads-test
           DYNAMODB_JOBS_TABLE: batch-jobs-test
@@ -62,15 +67,13 @@ jobs:
         run: pytest tests/ -v --tb=short
 
   # ---------------------------------------------------------------------------
-  # Job 2 — build Lambda ZIP
-  # Packages backend/ + all pip dependencies into a single ZIP for Lambda.
-  # Runs after tests pass, only on pushes (not PRs).
+  # Job 2 — build Lambda ZIP (only on manual deploy trigger)
   # ---------------------------------------------------------------------------
   build:
     name: Build Lambda Package
     runs-on: ubuntu-latest
     needs: test
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch'
 
     steps:
       - uses: actions/checkout@v4
@@ -84,13 +87,11 @@ jobs:
 
       - name: Install production dependencies into package dir
         working-directory: backend
-        run: |
-          pip install -r requirements.txt --target ./package --upgrade
+        run: pip install -r requirements.txt --target ./package --upgrade
 
       - name: Copy application code into package dir
         working-directory: backend
-        run: |
-          cp -r agent tools api.py lambda_handler.py config.py db.py storage.py sqs.py ./package/
+        run: cp -r agent tools api.py lambda_handler.py config.py db.py storage.py sqs.py ./package/
 
       - name: Create ZIP
         working-directory: backend/package
@@ -104,14 +105,14 @@ jobs:
           retention-days: 7
 
   # ---------------------------------------------------------------------------
-  # Job 3 — deploy to staging (branch: staging)
+  # Job 3 — deploy (manual trigger only, environment chosen in UI)
   # ---------------------------------------------------------------------------
-  deploy-staging:
-    name: Deploy → Staging
+  deploy:
+    name: Deploy → ${{ github.event.inputs.environment }}
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/staging'
-    environment: staging
+    if: github.event_name == 'workflow_dispatch'
+    environment: ${{ github.event.inputs.environment }}
 
     steps:
       - uses: actions/checkout@v4
@@ -137,10 +138,10 @@ jobs:
         run: |
           aws cloudformation deploy \
             --template-file infrastructure/cloudformation.yaml \
-            --stack-name sales-lead-agent-staging \
+            --stack-name sales-lead-agent-${{ github.event.inputs.environment }} \
             --capabilities CAPABILITY_NAMED_IAM \
             --parameter-overrides \
-              Environment=staging \
+              Environment=${{ github.event.inputs.environment }} \
               GroqApiKeyPath=/sales-lead-agent/groq-api-key \
               VoyageApiKeyPath=/sales-lead-agent/voyage-api-key \
               LambdaZipBucket=${{ secrets.LAMBDA_ZIP_BUCKET }} \
@@ -148,12 +149,10 @@ jobs:
             --no-fail-on-empty-changeset
 
       - name: Update Lambda function code
-        # CloudFormation deploy only updates the stack config.
-        # This forces Lambda to pull the new ZIP from S3 immediately.
         run: |
           for fn in api processor orchestrator; do
             aws lambda update-function-code \
-              --function-name sales-lead-agent-${fn}-staging \
+              --function-name sales-lead-agent-${fn}-${{ github.event.inputs.environment }} \
               --s3-bucket ${{ secrets.LAMBDA_ZIP_BUCKET }} \
               --s3-key lambda/${{ env.LAMBDA_ZIP }} \
               --publish
@@ -163,13 +162,13 @@ jobs:
         run: |
           for fn in api processor orchestrator; do
             aws lambda wait function-updated \
-              --function-name sales-lead-agent-${fn}-staging
+              --function-name sales-lead-agent-${fn}-${{ github.event.inputs.environment }}
           done
 
       - name: Smoke test — health endpoint
         run: |
           API_URL=$(aws cloudformation describe-stacks \
-            --stack-name sales-lead-agent-staging \
+            --stack-name sales-lead-agent-${{ github.event.inputs.environment }} \
             --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" \
             --output text)
           echo "API endpoint: $API_URL"
@@ -177,79 +176,8 @@ jobs:
           echo "Health check status: $STATUS"
           [ "$STATUS" = "200" ] || (echo "Health check failed" && exit 1)
 
-  # ---------------------------------------------------------------------------
-  # Job 4 — deploy to production (branch: main)
-  # Requires a manual approval gate via GitHub Environments.
-  # ---------------------------------------------------------------------------
-  deploy-production:
-    name: Deploy → Production
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.ref == 'refs/heads/main'
-    environment: production   # GitHub environment with required reviewers configured
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download Lambda ZIP
-        uses: actions/download-artifact@v4
-        with:
-          name: lambda-zip
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Upload ZIP to S3
-        run: |
-          aws s3 cp ${{ env.LAMBDA_ZIP }} \
-            s3://${{ secrets.LAMBDA_ZIP_BUCKET }}/lambda/${{ env.LAMBDA_ZIP }}
-
-      - name: Deploy CloudFormation stack
-        run: |
-          aws cloudformation deploy \
-            --template-file infrastructure/cloudformation.yaml \
-            --stack-name sales-lead-agent-production \
-            --capabilities CAPABILITY_NAMED_IAM \
-            --parameter-overrides \
-              Environment=production \
-              GroqApiKeyPath=/sales-lead-agent/groq-api-key \
-              LambdaZipBucket=${{ secrets.LAMBDA_ZIP_BUCKET }} \
-              LambdaZipKey=lambda/${{ env.LAMBDA_ZIP }} \
-            --no-fail-on-empty-changeset
-
-      - name: Update Lambda function code
-        run: |
-          for fn in api processor orchestrator; do
-            aws lambda update-function-code \
-              --function-name sales-lead-agent-${fn}-production \
-              --s3-bucket ${{ secrets.LAMBDA_ZIP_BUCKET }} \
-              --s3-key lambda/${{ env.LAMBDA_ZIP }} \
-              --publish
-          done
-
-      - name: Wait for Lambda updates to complete
-        run: |
-          for fn in api processor orchestrator; do
-            aws lambda wait function-updated \
-              --function-name sales-lead-agent-${fn}-production
-          done
-
-      - name: Smoke test — health endpoint
-        run: |
-          API_URL=$(aws cloudformation describe-stacks \
-            --stack-name sales-lead-agent-production \
-            --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" \
-            --output text)
-          echo "API endpoint: $API_URL"
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/health")
-          echo "Health check status: $STATUS"
-          [ "$STATUS" = "200" ] || (echo "Health check failed" && exit 1)
-
-      - name: Tag release
+      - name: Tag release (production only)
+        if: github.event.inputs.environment == 'production'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
