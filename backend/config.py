@@ -12,18 +12,25 @@ _env_file = next(
 )
 
 
-def _resolve_groq_key() -> str:
+def _resolve_ssm_or_env(ssm_path_env: str, direct_env: str) -> str:
     """
-    In Lambda, GROQ_API_KEY_PATH points to an SSM SecureString — fetch it at
-    cold start so key rotation only requires updating SSM, not redeploying.
-    Locally, fall back to GROQ_API_KEY from .env.
+    Fetch a secret from SSM SecureString (Lambda) or fall back to a plain
+    env var (local dev). Decouples key rotation from redeployment.
     """
-    ssm_path = os.getenv("GROQ_API_KEY_PATH", "")
+    ssm_path = os.getenv(ssm_path_env, "")
     if ssm_path:
         import boto3
         ssm = boto3.client("ssm", region_name=os.getenv("AWS_REGION", "us-east-1"))
         return ssm.get_parameter(Name=ssm_path, WithDecryption=True)["Parameter"]["Value"]
-    return os.getenv("GROQ_API_KEY", "")
+    return os.getenv(direct_env, "")
+
+
+def _resolve_groq_key() -> str:
+    return _resolve_ssm_or_env("GROQ_API_KEY_PATH", "GROQ_API_KEY")
+
+
+def _resolve_voyage_key() -> str:
+    return _resolve_ssm_or_env("VOYAGE_API_KEY_PATH", "VOYAGE_API_KEY")
 
 
 class Settings(BaseSettings):
@@ -70,4 +77,6 @@ def get_settings() -> Settings:
     settings = Settings()
     if not settings.groq_api_key:
         settings.groq_api_key = _resolve_groq_key()
+    if not settings.voyage_api_key:
+        settings.voyage_api_key = _resolve_voyage_key()
     return settings
