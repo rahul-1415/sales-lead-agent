@@ -241,34 +241,54 @@ def batch_orchestrator(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 },
             )
 
-            if unique_leads:
+            if not unique_leads:
+                # All leads are duplicates — complete immediately, nothing to process
+                db.update_job_status(
+                    job_id,
+                    {
+                        "status": JobStatus.COMPLETED.value,
+                        "stats": {
+                            "total": 0,
+                            "processed": 0,
+                            "priority": 0,
+                            "standard": 0,
+                            "research": 0,
+                            "rejected": 0,
+                            "errors": 0,
+                            "duplicates": duplicate_count,
+                        },
+                    },
+                )
+                logger.info(
+                    "all leads duplicates — job completed immediately",
+                    extra={"job_id": job_id, "duplicates": duplicate_count},
+                )
+            else:
+                db.update_job_status(
+                    job_id,
+                    {
+                        "status": JobStatus.PROCESSING.value,
+                        "stats": {
+                            "total": len(unique_leads),
+                            "processed": 0,
+                            "priority": 0,
+                            "standard": 0,
+                            "research": 0,
+                            "rejected": 0,
+                            "errors": 0,
+                            "duplicates": duplicate_count,
+                        },
+                    },
+                )
                 sqs_module.enqueue_batch(
                     leads=[lead.model_dump(mode="json") for lead in unique_leads],
                     batch_id=batch_id,
                     job_id=job_id,
                 )
-
-            # Update job total to reflect only unique leads
-            db.update_job_status(
-                job_id,
-                {
-                    "status": JobStatus.PROCESSING.value,
-                    "stats": {
-                        "total": len(unique_leads),
-                        "processed": 0,
-                        "priority": 0,
-                        "standard": 0,
-                        "research": 0,
-                        "rejected": 0,
-                        "errors": 0,
-                        "duplicates": duplicate_count,
-                    },
-                },
-            )
-            logger.info(
-                "batch fanned out",
-                extra={"job_id": job_id, "lead_count": len(unique_leads)},
-            )
+                logger.info(
+                    "batch fanned out",
+                    extra={"job_id": job_id, "lead_count": len(unique_leads)},
+                )
 
         except Exception:
             logger.exception("batch orchestration failed", extra={"key": key})
