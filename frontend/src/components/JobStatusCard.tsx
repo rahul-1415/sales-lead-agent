@@ -94,6 +94,16 @@ export function JobStatusCard({ jobId, onComplete }: Props) {
         ))}
       </div>
 
+      {status === "completed" && stats.duplicates > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          ⚠️{" "}
+          {stats.processed > 0
+            ? `${stats.processed} lead${stats.processed !== 1 ? "s" : ""} processed, `
+            : ""}
+          {stats.duplicates} duplicate{stats.duplicates !== 1 ? "s" : ""} skipped.
+        </div>
+      )}
+
       {stats.errors > 0 && (
         <p className="text-xs text-red-600">{stats.errors} lead(s) failed to process</p>
       )}
