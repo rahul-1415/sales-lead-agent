@@ -351,3 +351,88 @@ aws ssm put-parameter \
 - Page size is fixed at 20 per page matching the DynamoDB `Limit` — consistent UX
 
 **Files:** `frontend/src/hooks/useLeads.ts`, `frontend/src/app/page.tsx`
+
+---
+
+## ADR-024 — Voyage AI Multimodal Embeddings with Jaccard Fallback
+
+**Decision:** ICP similarity search uses Voyage AI (`voyage-multimodal-3.5` → `voyage-multimodal-3` probe order) when `VOYAGE_API_KEY` is available. Falls back to Jaccard keyword similarity if the key is unset, the package is not installed, or any API call fails (including rate limit / quota exhaustion).
+
+**Rationale:**
+- Semantic embeddings capture meaning ("freight" ≈ "logistics") whereas Jaccard only matches exact tokens
+- Keeping Jaccard as a fallback means the Lambda ZIP stays tiny (no onnxruntime) and the system degrades gracefully when the Voyage free tier is exhausted
+- Voyage API key stored as SSM SecureString (`/sales-lead-agent/voyage-api-key`) — same rotation pattern as Groq, no redeploy needed
+- `_init_voyage()` probes models at cold start; whichever responds becomes the active model for the container lifetime
+- `match_reason` on each `SimilarityResult` records which method was used (`voyage-multimodal-3.5` or `Jaccard`) for observability
+
+**Files:** `backend/tools/embeddings.py`, `backend/config.py`, `infrastructure/cloudformation.yaml`
+
+---
+
+## ADR-025 — Orchestrator Owns All Fan-Out; API Only Uploads to S3
+
+**Decision:** `_upload_aws()` in `api.py` uploads the file to S3 and creates the DynamoDB job record, but does **not** enqueue to SQS. The `batch_orchestrator` Lambda (triggered by S3 ObjectCreated) exclusively owns dedup filtering and SQS fan-out.
+
+**Rationale:**
+- The original design had the API enqueue directly to SQS AND the orchestrator enqueue again on the S3 trigger — every lead was processed twice
+- Double-enqueue wasted Groq API calls and caused inflated `processed` counts in job stats
+- The `put_lead` conditional write prevented double-storage, but doubled LLM costs
+- Removing the enqueue from the API makes the orchestrator the single source of truth for what gets processed
+
+**Files:** `backend/api.py` (`_upload_aws`), `backend/lambda_handler.py` (`batch_orchestrator`)
+
+---
+
+## ADR-026 — Dedup Key GSI for O(1) Cross-Batch Duplicate Detection on AWS
+
+**Decision:** A `dedup_key-index` GSI (`KEYS_ONLY` projection) is added to the leads DynamoDB table. The orchestrator queries this GSI per-lead before enqueuing to SQS. If the key exists, the lead is skipped.
+
+**Rationale:**
+- Without a GSI, cross-batch dedup requires a full table scan per lead — O(N×M) for N leads against M existing records
+- `KEYS_ONLY` projection minimises storage cost (only `lead_id` and `dedup_key` are stored in the index)
+- Both intra-batch (via `seen` set) and cross-batch (via GSI query) dedup happen in the orchestrator before any SQS enqueue — no LLM calls wasted on duplicates
+
+**Production note:** Leads stored before this feature was added have no `dedup_key` attribute and are invisible to the GSI — they cannot cause false-positive matches.
+
+**Files:** `backend/db.py` (`lead_exists_by_dedup_key`), `backend/lambda_handler.py` (`batch_orchestrator`), `infrastructure/cloudformation.yaml`
+
+---
+
+## ADR-027 — Immediate Job Completion When All Leads Are Duplicates
+
+**Decision:** If the orchestrator's dedup pass results in zero unique leads, the job is immediately set to `completed` with `total=0` and `duplicates=N` in stats — no SQS messages are sent.
+
+**Rationale:**
+- When all leads are duplicates, `total=0` after dedup. The processor completion check is `total > 0 and done >= total` — with `total=0` this is always `False`, leaving the job permanently stuck in `processing`
+- Completing immediately is semantically correct: there is genuinely nothing left to process
+- The `duplicates` counter in job stats provides visibility into why the job completed with zero leads processed
+
+**Files:** `backend/lambda_handler.py` (`batch_orchestrator`)
+
+---
+
+## ADR-028 — Separate Count Scan for Accurate Total in Paginated List
+
+**Decision:** `db.count_leads()` performs a `Select=COUNT` DynamoDB scan (no item data transferred) to get the real total count. This is called separately from `scan_leads()` on each `GET /leads` request.
+
+**Rationale:**
+- `scan_leads()` returns only one page of items — `len(items)` equals the page size (20), not the total
+- The frontend was showing "Leads (showing: 20 / 20)" on every page because `total` was set to `len(items)`
+- `Select=COUNT` scans all pages internally but transfers no item payloads — significantly cheaper than fetching all items
+- Acceptable for a demo dataset; production would use a separate counter attribute maintained by Lambda on each write
+
+**Files:** `backend/db.py` (`count_leads`), `backend/api.py` (`list_leads`)
+
+---
+
+## ADR-029 — Manual Deploy Trigger; Tests Run on Every Push
+
+**Decision:** The GitHub Actions workflow runs lint + tests on every push to any branch. Build and deploy only run when manually triggered (`workflow_dispatch`) with an environment choice (staging / production).
+
+**Rationale:**
+- Auto-deploying on every push to `main` caused unintended production deploys during rapid iteration
+- Separating concerns: CI (always) vs CD (intentional) — engineers can commit freely without fear of accidental deploys
+- `workflow_dispatch` with an environment dropdown gives explicit control; `permissions: contents: write` allows the deploy job to create release tags
+- Black formatting is enforced via a local pre-commit hook rather than blocking every push
+
+**Files:** `.github/workflows/deploy.yml`
