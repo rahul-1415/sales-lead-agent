@@ -6,14 +6,26 @@ Serverless pipeline on AWS: API Gateway → Lambda (FastAPI/Mangum) → SQS → 
 Frontend is Next.js deployed on Vercel, calling the API Gateway endpoint.
 
 ```
-CSV upload
+CSV / JSON upload
     │
     ▼
 API Gateway → ApiFunction (FastAPI/Mangum)
                     │
                     ├─ Writes job record to DynamoDB (batch_jobs table)
-                    ├─ Stores raw CSV to S3 (input bucket)
-                    └─ Sends SQS message
+                    └─ Stores raw file to S3 (input bucket)
+                              │  (S3 ObjectCreated trigger)
+                              ▼
+                    BatchOrchestratorFunction
+                              │
+                    ┌─────────┴──────────────────┐
+                    │  Dedup filter               │
+                    │  - compute dedup_key/lead   │
+                    │  - query dedup_key-index GSI│
+                    │  - skip existing leads      │
+                    └─────────┬──────────────────┘
+                              │  (one SQS msg per unique lead)
+                              ▼
+                         LeadQueue (SQS)
                               │
                               ▼
                     LeadProcessorFunction
@@ -23,7 +35,7 @@ API Gateway → ApiFunction (FastAPI/Mangum)
                     │  (per-lead pipeline)   │
                     │  1. Email validation   │
                     │  2. Company enrichment │
-                    │  3. Embedding RAG      │
+                    │  3. Embedding / RAG    │
                     │  4. Score breakdown    │
                     │  5. LLM reasoning      │
                     │  6. Routing action     │
@@ -121,10 +133,10 @@ Next Lambda cold start picks up the new value automatically.
 
 ---
 
-### 9. Stdlib Jaccard Similarity Instead of Embeddings
-**Decision**: ICP similarity search uses keyword Jaccard overlap (stdlib only) instead of `fastembed` + `onnxruntime`.
+### 9. Voyage AI Embeddings with Jaccard Fallback
+**Decision**: ICP similarity uses Voyage AI (`voyage-multimodal-3.5` → `voyage-multimodal-3`) when `VOYAGE_API_KEY` is set; falls back to stdlib Jaccard keyword overlap otherwise.
 
-**Why**: `onnxruntime` alone unzips to ~150 MB, pushing the Lambda ZIP past the 250 MB hard limit. Jaccard similarity over stop-word-filtered tokens is accurate enough for the 4 ICP seed examples used here. ZIP dropped from 300 MB → 4 MB.
+**Why**: `onnxruntime` unzips to ~150 MB, exceeding the Lambda 250 MB ZIP limit. Voyage API keeps the ZIP under 5 MB while providing semantic similarity ("freight" ≈ "logistics"). Jaccard fallback ensures the system works even when the API key is unset or the free tier is exhausted. Key stored in SSM SecureString — same rotation pattern as Groq.
 
 ---
 
@@ -151,9 +163,10 @@ Next Lambda cold start picks up the new value automatically.
 | LeadProcessorFunction (Lambda) | Processes leads from SQS; runs SalesLeadAgent pipeline |
 | BatchOrchestratorFunction (Lambda) | Triggered by S3 ObjectCreated; splits large batches into SQS messages |
 | SQS (LeadQueue) | Decouples upload from processing; enables parallel Lambda scaling |
-| DynamoDB (leads) | Stores enriched leads; GSI on `batch_id` |
+| DynamoDB (leads) | Stores enriched leads; GSI on `batch_id` and `dedup_key` |
 | DynamoDB (batch_jobs) | Tracks job lifecycle and stats |
 | S3 (input) | Stores raw uploaded files; triggers BatchOrchestratorFunction |
 | S3 (output) | Stores enriched lead JSON results |
-| SSM Parameter Store | Stores Groq API key as SecureString |
+| SSM Parameter Store | Stores Groq and Voyage AI API keys as SecureStrings |
 | CloudWatch Alarms | Lambda error rate and DLQ depth monitoring |
+| GitHub Actions | CI (lint + test on every push); CD (manual `workflow_dispatch`) |
