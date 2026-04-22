@@ -145,6 +145,25 @@ def get_job(job_id: str) -> Optional[dict]:
     return _decimals_to_floats(item) if item else None
 
 
+def delete_all_leads() -> int:
+    """Scan all lead_id keys and batch-delete them. Returns count deleted."""
+    table = _table(settings.dynamodb_leads_table)
+    count = 0
+    kwargs: dict[str, Any] = {"ProjectionExpression": "lead_id"}
+    while True:
+        response = table.scan(**kwargs)
+        items = response.get("Items", [])
+        with table.batch_writer() as batch:
+            for item in items:
+                batch.delete_item(Key={"lead_id": item["lead_id"]})
+                count += 1
+        if "LastEvaluatedKey" not in response:
+            break
+        kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+    logger.info("all leads deleted", extra={"count": count})
+    return count
+
+
 def update_job_status(job_id: str, updates: dict) -> None:
     """Partial update — pass only the fields that changed."""
     set_expr = ", ".join(f"#f_{k} = :{k}" for k in updates)

@@ -465,14 +465,14 @@ def get_download_url(job_id: str):
 
 @app.delete("/leads", status_code=200)
 def clear_leads():
-    """Clear all leads from the in-memory store (local mode only)."""
-    if not settings.is_local:
-        raise HTTPException(
-            status_code=403, detail="Clear not available in production."
-        )
-    count = len(_local_leads)
-    _local_leads.clear()
-    logger.info("leads cleared", extra={"count": count})
+    """Clear all leads — in-memory store (local) or DynamoDB (production)."""
+    if settings.is_local:
+        count = len(_local_leads)
+        _local_leads.clear()
+        logger.info("leads cleared", extra={"count": count})
+        return {"cleared": count}
+
+    count = db.delete_all_leads()
     return {"cleared": count}
 
 
