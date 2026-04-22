@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { UploadForm } from "@/components/UploadForm";
 import { JobStatusCard } from "@/components/JobStatusCard";
 import { ProcessedJobCard } from "@/components/ProcessedJobCard";
@@ -9,7 +9,7 @@ import { Analytics } from "@/components/Analytics";
 import { useLeads } from "@/hooks/useLeads";
 import { usePersistedJobs } from "@/hooks/usePersistedJobs";
 import type { UploadResponse } from "@/lib/types";
-import { Archive, RefreshCw, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Archive, ChevronDown, RefreshCw, SlidersHorizontal, Trash2 } from "lucide-react";
 import { clearLeads, exportLeads } from "@/lib/api";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 
@@ -24,7 +24,20 @@ export default function DashboardPage() {
   const { completedIds, addCompletedJob, clearCompletedJobs } = usePersistedJobs();
   const [clearing, setClearing] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
   const [showClearDialog, setShowClearDialog] = useState(false);
+
+  useEffect(() => {
+    if (!showExportMenu) return;
+    function handleClick(e: MouseEvent) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showExportMenu]);
   const [dupSummary, setDupSummary] = useState<string | null>(null);
 
   function onUploaded(res: UploadResponse) {
@@ -38,10 +51,11 @@ export default function DashboardPage() {
     setTimeout(() => refresh(), 4000);
   }
 
-  async function handleExport() {
+  async function handleExport(format: "csv" | "ndjson" = "csv") {
     setExporting(true);
+    setShowExportMenu(false);
     try {
-      await exportLeads(scoreMin);
+      await exportLeads(scoreMin, format);
     } finally {
       setExporting(false);
     }
@@ -173,14 +187,42 @@ export default function DashboardPage() {
                 ))}
               </select>
             </div>
-            <button
-              onClick={handleExport}
-              disabled={exporting || total === 0}
-              className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-            >
-              <Archive className="h-3.5 w-3.5" />
-              {exporting ? "Exporting…" : "Export"}
-            </button>
+            <div className="relative" ref={exportMenuRef}>
+              <div className="flex items-stretch rounded-md border border-gray-200 bg-white text-sm text-gray-600 overflow-hidden">
+                <button
+                  onClick={() => handleExport("csv")}
+                  disabled={exporting || total === 0}
+                  className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                >
+                  <Archive className="h-3.5 w-3.5" />
+                  {exporting ? "Exporting…" : "Export CSV"}
+                </button>
+                <button
+                  onClick={() => setShowExportMenu((v) => !v)}
+                  disabled={exporting || total === 0}
+                  className="px-1.5 border-l border-gray-200 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                  aria-label="More export options"
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              {showExportMenu && (
+                <div className="absolute right-0 z-20 mt-1 w-36 rounded-lg border border-gray-200 bg-white shadow-lg py-1">
+                  <button
+                    onClick={() => handleExport("csv")}
+                    className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    Export CSV
+                  </button>
+                  <button
+                    onClick={() => handleExport("ndjson")}
+                    className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    Export NDJSON
+                  </button>
+                </div>
+              )}
+            </div>
             {total > 0 && (
               <button
                 onClick={() => setShowClearDialog(true)}

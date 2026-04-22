@@ -1,0 +1,67 @@
+{
+  "leads": [
+    {
+      "company": "Harbourview Logistics",
+      "contact_name": "Elena Vasquez",
+      "contact_email": "evasquez@harbourview.com",
+      "industry": "logistics",
+      "employee_count": 1600,
+      "location": "Miami, FL",
+      "notes": "Port-based freight forwarder, managing customs workflows manually, actively evaluating automation vendors"
+    },
+    {
+      "company": "Crestline Medical Group",
+      "contact_name": "Dr. James Obi",
+      "contact_email": "j.obi@crestlinemedical.com",
+      "industry": "healthcare",
+      "employee_count": 920,
+      "location": "Denver, CO",
+      "notes": "Multi-site surgical center network, expanding to 3 new locations in 2026, needs integrated scheduling and billing workflow"
+    },
+    {
+      "company": "Northstar Fabrication",
+      "contact_name": "Karen Howell",
+      "contact_email": "khowell@northstarfab.com",
+      "industry": "manufacturing",
+      "employee_count": 2700,
+      "location": "Milwaukee, WI",
+      "notes": "Precision metal fabricator with SAP ERP, evaluating production workflow automation for Q2 rollout"
+    },
+    {
+      "company": "Evergreen Supply Chain Co",
+      "contact_name": "Louis Tran",
+      "contact_email": "ltran@evergreensupply.com",
+      "industry": "logistics",
+      "employee_count": 540,
+      "location": "Portland, OR",
+      "notes": "Third-party logistics provider specialising in cold-chain, uses Oracle TMS"
+    },
+    {
+      "company": "Pinnacle FinTech",
+      "contact_name": "Chloe Marsh",
+      "contact_email": "cmarsh@pinnaclefi.com",
+      "industry": "financial_services",
+      "employee_count": 310,
+      "location": "Austin, TX",
+      "notes": "Payments infrastructure startup, Series A, 60-person ops team managing compliance manually"
+    },
+    {
+      "company": "SolarGrid Operations",
+      "contact_name": "Omar Hassan",
+      "contact_email": "o.hassan@solargridops.com",
+      "industry": "energy",
+      "employee_count": 430,
+      "location": "Phoenix, AZ",
+      "notes": "Utility-scale solar operator, field ops team of 200, exploring workflow automation for maintenance scheduling"
+    },
+    {
+      "company": "Droplet Analytics",
+      "contact_name": "Jessica Park",
+      "contact_email": "jpark@dropletanalytics.io",
+      "industry": "technology",
+      "employee_count": 18,
+      "location": "San Francisco, CA",
+      "notes": "Seed-stage data analytics startup, too early for enterprise tooling"
+    }
+  ]
+}

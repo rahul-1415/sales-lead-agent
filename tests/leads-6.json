@@ -1,0 +1,103 @@
+{
+  "_test_notes": {
+    "purpose": "Duplicate detection test. Upload leads-5.json first, then leads-1.2.json + leads-4.json, then this file.",
+    "expected_duplicates": [
+      {
+        "company": "Harbourview Logistics",
+        "reason": "exact duplicate of leads-5 — same company + same email"
+      },
+      {
+        "company": "HARBOURVIEW LOGISTICS",
+        "reason": "case-variation duplicate — normalises to same key as leads-5 Harbourview Logistics entry"
+      },
+      {
+        "company": "Acme, Logistics",
+        "reason": "punctuation-variation duplicate — comma stripped by normaliser, matches leads-1.2 Acme Logistics"
+      },
+      {
+        "company": "Steelmark Industries",
+        "reason": "exact duplicate of leads-4"
+      }
+    ],
+    "expected_not_duplicates": [
+      {
+        "company": "Crestline Medical Group",
+        "reason": "same company as leads-5 but DIFFERENT email — dedup key is company+email, so this is a new lead"
+      }
+    ]
+  },
+  "leads": [
+    {
+      "company": "Harbourview Logistics",
+      "contact_name": "Elena Vasquez",
+      "contact_email": "evasquez@harbourview.com",
+      "industry": "logistics",
+      "employee_count": 1600,
+      "location": "Miami, FL",
+      "notes": "EXACT DUPLICATE of leads-5 — same company + same email. Should be skipped."
+    },
+    {
+      "company": "HARBOURVIEW LOGISTICS",
+      "contact_name": "Elena Vasquez",
+      "contact_email": "evasquez@harbourview.com",
+      "industry": "logistics",
+      "employee_count": 1600,
+      "location": "Miami, FL",
+      "notes": "CASE VARIATION DUPLICATE — uppercased name normalises to the same dedup key. Should be skipped."
+    },
+    {
+      "company": "Acme, Logistics",
+      "contact_name": "Jane Smith",
+      "contact_email": "jane@acmelogistics.com",
+      "industry": "logistics",
+      "employee_count": 1200,
+      "location": "Chicago, IL",
+      "notes": "PUNCTUATION VARIATION DUPLICATE — comma is stripped by normaliser, matches 'Acme Logistics' from leads-1.2. Should be skipped."
+    },
+    {
+      "company": "Steelmark Industries",
+      "contact_name": "Tom Bergmann",
+      "contact_email": "tbergmann@steelmark.com",
+      "industry": "manufacturing",
+      "employee_count": 3400,
+      "location": "Pittsburgh, PA",
+      "notes": "EXACT DUPLICATE of leads-4. Should be skipped."
+    },
+    {
+      "company": "Crestline Medical Group",
+      "contact_name": "Admin Team",
+      "contact_email": "admin@crestlinemedical.com",
+      "industry": "healthcare",
+      "employee_count": 920,
+      "location": "Denver, CO",
+      "notes": "NOT A DUPLICATE — same company as leads-5 but different email address. Dedup key differs, should be processed as a new lead."
+    },
+    {
+      "company": "RailLink Intermodal",
+      "contact_name": "Fiona Delgado",
+      "contact_email": "fdelgado@raillink.com",
+      "industry": "logistics",
+      "employee_count": 2200,
+      "location": "Kansas City, MO",
+      "notes": "Intermodal rail and trucking operator, migrating off spreadsheet-based load planning"
+    },
+    {
+      "company": "Bridgepath Insurance",
+      "contact_name": "Nathan Cole",
+      "contact_email": "ncole@bridgepath.com",
+      "industry": "financial_services",
+      "employee_count": 1100,
+      "location": "Hartford, CT",
+      "notes": "Mid-market insurer with manual claims workflow, evaluating BPA vendors post Series B"
+    },
+    {
+      "company": "Highfield Contract Manufacturing",
+      "contact_name": "Grace Thornton",
+      "contact_email": "g.thornton@highfieldmfg.com",
+      "industry": "manufacturing",
+      "employee_count": 4100,
+      "location": "Cleveland, OH",
+      "notes": "Contract manufacturer for automotive OEMs, Workday-integrated, scaling procurement automation"
+    }
+  ]
+}

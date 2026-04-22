@@ -338,8 +338,13 @@ def list_leads(
 
 
 @app.get("/leads/export")
-def export_leads(score_min: float = Query(0.0, ge=0.0, le=1.0)):
-    """Download all current leads as NDJSON — must be defined before /leads/{lead_id}."""
+def export_leads(
+    score_min: float = Query(0.0, ge=0.0, le=1.0),
+    format: str = Query("csv", pattern="^(csv|ndjson)$"),
+):
+    """Download all leads as CSV (default) or NDJSON. Must be defined before /leads/{lead_id}."""
+    import csv as csv_module
+    import io
     import json
     from fastapi.responses import StreamingResponse
 
@@ -353,8 +358,53 @@ def export_leads(score_min: float = Query(0.0, ge=0.0, le=1.0)):
     else:
         items, _ = db.scan_leads(score_min=score_min, limit=1000)
 
-    ndjson = "\n".join(json.dumps(item, default=str) for item in items)
+    if format == "csv":
+        buf = io.StringIO()
+        writer = csv_module.writer(buf)
+        writer.writerow(
+            [
+                "company",
+                "contact_name",
+                "contact_email",
+                "website",
+                "industry",
+                "company_size",
+                "employee_count",
+                "location",
+                "confidence_score",
+                "recommended_action",
+                "reasoning",
+                "tags",
+                "processed_at",
+            ]
+        )
+        for item in items:
+            raw = item.get("raw", {})
+            enrich = item.get("company_enrichment") or {}
+            writer.writerow(
+                [
+                    raw.get("company", ""),
+                    raw.get("contact_name", ""),
+                    raw.get("contact_email", ""),
+                    raw.get("website", ""),
+                    (enrich.get("industry_segment") or "").replace("_", " "),
+                    (enrich.get("company_size") or "").replace("_", " "),
+                    enrich.get("employee_count", ""),
+                    enrich.get("headquarters") or raw.get("location", ""),
+                    round(float(item.get("confidence_score", 0)), 4),
+                    item.get("recommended_action", ""),
+                    item.get("reasoning", ""),
+                    "; ".join(item.get("tags", [])),
+                    str(item.get("processed_at", ""))[:19],
+                ]
+            )
+        return StreamingResponse(
+            iter([buf.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=leads_export.csv"},
+        )
 
+    ndjson = "\n".join(json.dumps(item, default=str) for item in items)
     return StreamingResponse(
         iter([ndjson]),
         media_type="application/x-ndjson",
