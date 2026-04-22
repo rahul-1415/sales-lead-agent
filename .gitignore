@@ -12,3 +12,7 @@ node_modules/
 .next/
 backend/package/
 backend/lambda.zip
+frontend/.env.local
+frontend/tsconfig.tsbuildinfo
+tests/leads_export.ndjson
+tests/*.pdf
