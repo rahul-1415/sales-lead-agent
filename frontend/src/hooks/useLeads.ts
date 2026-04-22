@@ -4,7 +4,14 @@ import type { EnrichedLead } from "@/lib/types";
 
 const PAGE_SIZE = 20;
 
-export function useLeads(scoreMin: number = 0) {
+interface UseLeadsOptions {
+  scoreMin?: number;
+  action?: string;
+  sortBy?: string;
+  sortOrder?: string;
+}
+
+export function useLeads({ scoreMin = 0, action, sortBy = "processed_at", sortOrder = "desc" }: UseLeadsOptions = {}) {
   const [leads, setLeads] = useState<EnrichedLead[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -20,7 +27,15 @@ export function useLeads(scoreMin: number = 0) {
     setError(null);
     try {
       const cursor = cursors.current[targetPage - 1];
-      const data = await getLeads({ score_min: scoreMin, limit: PAGE_SIZE, cursor, page: targetPage });
+      const data = await getLeads({
+        score_min: scoreMin,
+        limit: PAGE_SIZE,
+        cursor,
+        page: targetPage,
+        action: action || undefined,
+        sort_by: sortBy,
+        sort_order: sortOrder,
+      });
       setLeads(data.leads);
       setTotal(data.total);
       setPage(targetPage);
@@ -33,9 +48,9 @@ export function useLeads(scoreMin: number = 0) {
     } finally {
       setLoading(false);
     }
-  }, [scoreMin]);
+  }, [scoreMin, action, sortBy, sortOrder]);
 
-  // Reset to page 1 when filter changes
+  // Reset to page 1 when any filter/sort changes
   useEffect(() => {
     cursors.current = [undefined];
     setPage(1);

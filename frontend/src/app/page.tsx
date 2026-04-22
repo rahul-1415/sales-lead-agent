@@ -20,7 +20,15 @@ export default function DashboardPage() {
   const [processingCounts, setProcessingCounts] = useState<Record<string, number>>({});
   const jobStartTimes = useRef<Record<string, number>>({});
   const [scoreMin, setScoreMin] = useState(0);
-  const { leads, total, page, hasNext, hasPrev, loading, error, refresh, nextPage, prevPage } = useLeads(scoreMin);
+  const [actionFilter, setActionFilter] = useState("");
+  const [sortBy, setSortBy] = useState("processed_at");
+  const [sortOrder, setSortOrder] = useState("desc");
+  const { leads, total, page, hasNext, hasPrev, loading, error, refresh, nextPage, prevPage } = useLeads({
+    scoreMin,
+    action: actionFilter,
+    sortBy,
+    sortOrder,
+  });
   const { completedIds, addCompletedJob, clearCompletedJobs } = usePersistedJobs();
   const [clearing, setClearing] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -185,6 +193,25 @@ export default function DashboardPage() {
             Leads {total > 0 && <span className="normal-case font-normal text-gray-400">(showing: {leads.length} / {total})</span>}
           </h2>
           <div className="flex items-center gap-3">
+            {/* Sort */}
+            <div className="flex items-center gap-1.5 text-sm text-gray-600">
+              <select
+                value={`${sortBy}:${sortOrder}`}
+                onChange={(e) => {
+                  const [by, order] = e.target.value.split(":");
+                  setSortBy(by);
+                  setSortOrder(order);
+                }}
+                className="rounded-md border border-gray-200 bg-white px-2 py-1 text-sm"
+              >
+                <option value="processed_at:desc">Newest first</option>
+                <option value="processed_at:asc">Oldest first</option>
+                <option value="confidence_score:desc">Highest score</option>
+                <option value="confidence_score:asc">Lowest score</option>
+              </select>
+            </div>
+
+            {/* Min score */}
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <SlidersHorizontal className="h-4 w-4" />
               <label htmlFor="score-filter">Min score</label>
@@ -252,6 +279,29 @@ export default function DashboardPage() {
               Refresh
             </button>
           </div>
+        </div>
+
+        {/* Action filter pills */}
+        <div className="mb-3 flex flex-wrap gap-2">
+          {[
+            { label: "All", value: "" },
+            { label: "Priority", value: "priority" },
+            { label: "Standard", value: "standard" },
+            { label: "Research", value: "research" },
+            { label: "Rejected", value: "reject" },
+          ].map(({ label, value }) => (
+            <button
+              key={value}
+              onClick={() => setActionFilter(value)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                actionFilter === value
+                  ? "bg-brand-600 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         {error && (

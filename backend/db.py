@@ -85,12 +85,25 @@ def lead_exists_by_dedup_key(dedup_key: str) -> bool:
     return response["Count"] > 0
 
 
-def count_leads(score_min: float = 0.0) -> int:
+def _build_filter(
+    score_min: float, action: Optional[str]
+) -> tuple[str, dict[str, Any]]:
+    """Build FilterExpression + ExpressionAttributeValues for leads queries."""
+    parts = ["confidence_score >= :min"]
+    values: dict[str, Any] = {":min": Decimal(str(score_min))}
+    if action:
+        parts.append("recommended_action = :action")
+        values[":action"] = action
+    return " AND ".join(parts), values
+
+
+def count_leads(score_min: float = 0.0, action: Optional[str] = None) -> int:
     """Full table scan returning only the count — no item data transferred."""
+    filter_expr, expr_values = _build_filter(score_min, action)
     kwargs: dict[str, Any] = {
         "Select": "COUNT",
-        "FilterExpression": "confidence_score >= :min",
-        "ExpressionAttributeValues": {":min": Decimal(str(score_min))},
+        "FilterExpression": filter_expr,
+        "ExpressionAttributeValues": expr_values,
     }
     total = 0
     while True:
@@ -106,22 +119,28 @@ def scan_leads(
     score_min: float = 0.0,
     limit: int = 20,
     last_evaluated_key: Optional[dict] = None,
+    action: Optional[str] = None,
+    sort_by: str = "processed_at",
+    sort_order: str = "desc",
 ) -> tuple[list[dict], Optional[dict]]:
     """
-    Single DynamoDB scan page. Limit is passed directly so DynamoDB stops
-    after examining `limit` items and returns a LastEvaluatedKey cursor for
-    the next page. FilterExpression is applied server-side.
+    Single DynamoDB scan page with optional action filter and in-page sorting.
+    DynamoDB scans are unordered — sorting is applied after fetch, so order is
+    consistent within a page but not guaranteed globally across pages.
     """
+    filter_expr, expr_values = _build_filter(score_min, action)
     kwargs: dict[str, Any] = {
         "Limit": limit,
-        "FilterExpression": "confidence_score >= :min",
-        "ExpressionAttributeValues": {":min": Decimal(str(score_min))},
+        "FilterExpression": filter_expr,
+        "ExpressionAttributeValues": expr_values,
     }
     if last_evaluated_key:
         kwargs["ExclusiveStartKey"] = last_evaluated_key
 
     response = _table(settings.dynamodb_leads_table).scan(**kwargs)
     items = [_decimals_to_floats(item) for item in response.get("Items", [])]
+    reverse = sort_order == "desc"
+    items.sort(key=lambda x: x.get(sort_by) or "", reverse=reverse)
     return items, response.get("LastEvaluatedKey")
 
 

@@ -36,12 +36,18 @@ export function getLeads(params: {
   limit?: number;
   cursor?: string;
   page?: number;
+  action?: string;
+  sort_by?: string;
+  sort_order?: string;
 }): Promise<LeadListResponse> {
   const q = new URLSearchParams();
-  if (params.score_min != null) q.set("score_min", String(params.score_min));
-  if (params.limit != null)     q.set("limit",     String(params.limit));
-  if (params.cursor)            q.set("cursor",    params.cursor);
-  if (params.page != null)      q.set("page",      String(params.page));
+  if (params.score_min != null) q.set("score_min",  String(params.score_min));
+  if (params.limit != null)     q.set("limit",       String(params.limit));
+  if (params.cursor)            q.set("cursor",      params.cursor);
+  if (params.page != null)      q.set("page",        String(params.page));
+  if (params.action)            q.set("action",      params.action);
+  if (params.sort_by)           q.set("sort_by",     params.sort_by);
+  if (params.sort_order)        q.set("sort_order",  params.sort_order);
   return request<LeadListResponse>(`/leads?${q}`);
 }
 

@@ -306,14 +306,21 @@ def list_leads(
     limit: int = Query(20, ge=1, le=100),
     cursor: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
+    action: Optional[str] = Query(
+        None, pattern="^(priority|standard|research|reject)$"
+    ),
+    sort_by: str = Query("processed_at", pattern="^(processed_at|confidence_score)$"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
 ):
     if settings.is_local:
         items = [
             v
             for v in _local_leads.values()
             if v.get("confidence_score", 0) >= score_min
+            and (action is None or v.get("recommended_action") == action)
         ]
-        items.sort(key=lambda x: x.get("confidence_score", 0), reverse=True)
+        reverse = sort_order == "desc"
+        items.sort(key=lambda x: x.get(sort_by) or "", reverse=reverse)
         start = (page - 1) * limit
         page_items = items[start : start + limit]
         return LeadListResponse(
@@ -326,11 +333,16 @@ def list_leads(
 
     last_key = json.loads(cursor) if cursor else None
     items, next_key = db.scan_leads(
-        score_min=score_min, limit=limit, last_evaluated_key=last_key
+        score_min=score_min,
+        limit=limit,
+        last_evaluated_key=last_key,
+        action=action,
+        sort_by=sort_by,
+        sort_order=sort_order,
     )
     return LeadListResponse(
         leads=[EnrichedLead(**item) for item in items],
-        total=db.count_leads(score_min=score_min),
+        total=db.count_leads(score_min=score_min, action=action),
         page=page,
         page_size=limit,
         next_cursor=json.dumps(next_key) if next_key else None,
