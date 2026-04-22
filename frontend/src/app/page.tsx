@@ -72,6 +72,18 @@ export default function DashboardPage() {
     }
   }
 
+  async function handleDownloadAndDelete() {
+    setClearing(true);
+    try {
+      await exportLeads(scoreMin, "csv");
+      await clearLeads();
+      refresh();
+      setShowClearDialog(false);
+    } finally {
+      setClearing(false);
+    }
+  }
+
   const onJobComplete = useCallback((jobId: string) => {
     const elapsed = Date.now() - (jobStartTimes.current[jobId] ?? 0);
     const delay = Math.max(0, MIN_PROCESSING_MS - elapsed);
@@ -281,6 +293,7 @@ export default function DashboardPage() {
         loading={clearing}
         onConfirm={handleClearConfirmed}
         onCancel={() => setShowClearDialog(false)}
+        onDownloadAndDelete={handleDownloadAndDelete}
       />
     </div>
   );

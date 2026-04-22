@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Download } from "lucide-react";
 
 interface Props {
   open: boolean;
@@ -12,6 +12,7 @@ interface Props {
   loading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  onDownloadAndDelete?: () => void;
 }
 
 export function ConfirmDialog({
@@ -23,6 +24,7 @@ export function ConfirmDialog({
   loading = false,
   onConfirm,
   onCancel,
+  onDownloadAndDelete,
 }: Props) {
   const cancelRef = useRef<HTMLButtonElement>(null);
 
@@ -71,25 +73,37 @@ export function ConfirmDialog({
         )}
 
         {/* Actions */}
-        <div className="flex justify-end gap-3">
-          <button
-            ref={cancelRef}
-            onClick={onCancel}
-            disabled={loading}
-            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={loading}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60 flex items-center gap-2"
-          >
-            {loading && (
-              <span className="h-3.5 w-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
-            )}
-            {loading ? "Deleting…" : confirmLabel}
-          </button>
+        <div className="flex flex-col gap-2">
+          {onDownloadAndDelete && (
+            <button
+              onClick={onDownloadAndDelete}
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50 transition-colors"
+            >
+              <Download className="h-4 w-4" />
+              Download CSV, then delete all
+            </button>
+          )}
+          <div className="flex justify-end gap-3">
+            <button
+              ref={cancelRef}
+              onClick={onCancel}
+              disabled={loading}
+              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onConfirm}
+              disabled={loading}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60 flex items-center gap-2"
+            >
+              {loading && (
+                <span className="h-3.5 w-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+              )}
+              {loading ? "Deleting…" : confirmLabel}
+            </button>
+          </div>
         </div>
       </div>
     </div>
